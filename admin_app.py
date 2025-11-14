@@ -1,8 +1,10 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
-from flask import send_from_directory
+from flask import send_from_directory, send_file
 import pymysql
 import pymysql.cursors
+import io
 from functools import wraps
+import admin_app
 
 # Minimal Admin-only Flask app
 app = Flask(__name__)
@@ -204,14 +206,22 @@ def admin_get_file(internship_id, file_type):
             file_name = result[column]
             # build URL to serve the file from the uploads folder or external host
             import os
-            local_path = os.path.join(app.root_path, UPLOAD_FOLDER, file_name)
-            if os.path.exists(local_path):
+            local_path = os.path.join(app.root_path, UPLOAD_FOLDER, file_name) if isinstance(file_name, str) else None
+            if local_path and os.path.exists(local_path):
                 file_url = url_for('admin_serve_file', filename=file_name)
             else:
                 # try an external base URL (configure via UPLOAD_URL_BASE), fall back to mysql host
-                base = app.config.get('UPLOAD_URL_BASE') or f"https://{app.config.get('MYSQL_HOST')}/uploads"
-                file_url = base.rstrip('/') + '/' + file_name
-            return jsonify({'success': True, 'file_name': file_name, 'file_type': file_type, 'file_url': file_url})
+                if isinstance(file_name, str) and (file_name.startswith('http://') or file_name.startswith('https://')):
+                    file_url = file_name
+                else:
+                    base = app.config.get('UPLOAD_URL_BASE') or f"https://{app.config.get('MYSQL_HOST')}/uploads"
+                    file_url = base.rstrip('/') + '/' + (file_name if isinstance(file_name, str) else '')
+            # Also provide an inplace URL which serves the file content for embedding
+            try:
+                inplace_url = url_for('admin_serve_file_inplace', internship_id=internship_id, file_type=file_type, type=internship_type)
+            except Exception:
+                inplace_url = file_url
+            return jsonify({'success': True, 'file_name': file_name, 'file_type': file_type, 'file_url': file_url, 'inplace_url': inplace_url})
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
@@ -229,6 +239,96 @@ def admin_serve_file(filename):
         return send_from_directory(directory, filename, as_attachment=False)
     except Exception as e:
         return (f"File not found: {filename}", 404)
+
+
+@app.route('/admin/serve-file-inplace/<int:internship_id>/<file_type>')
+@login_required
+def admin_serve_file_inplace(internship_id, file_type):
+    """Serve file content inline for viewing in-browser.
+       Handles BLOB bytes or filename strings stored in DB.
+       Query param: type=free|paid
+       file_type: id_proof, resume, project
+    """
+    internship_type = request.args.get('type', 'free')
+    column_map = {
+        'id_proof': 'id_proof',
+        'resume': 'resume',
+        'project': 'project_document',
+    }
+    if file_type not in column_map:
+        return ("Invalid file type", 400)
+    column = column_map[file_type]
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+        query = f"SELECT {column} FROM {table} WHERE id = %s"
+        try:
+            cursor.execute(query, (internship_id,))
+            result = cursor.fetchone()
+        except Exception:
+            alt_table = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            alt_query = f"SELECT {column} FROM {alt_table} WHERE id = %s"
+            cursor.execute(alt_query, (internship_id,))
+            result = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        if not result or not result.get(column):
+            return ("File not found", 404)
+
+        value = result[column]
+
+        # If DB stored file as bytes (BLOB)
+        if isinstance(value, (bytes, bytearray)):
+            data = bytes(value)
+            # Detect file type by magic bytes
+            mime = 'application/octet-stream'
+            if data.startswith(b'%PDF'):
+                mime = 'application/pdf'
+            elif data.startswith(b'\xff\xd8'):
+                mime = 'image/jpeg'
+            elif data.startswith(b'\x89PNG'):
+                mime = 'image/png'
+            return send_file(io.BytesIO(data), mimetype=mime, as_attachment=False)
+
+        # If DB stored a string (filename or URL path)
+        if isinstance(value, str):
+            import os
+            # Check if it's an absolute URL
+            if value.startswith('http://') or value.startswith('https://'):
+                return redirect(value)
+
+            # Try local file first (relative to UPLOAD_FOLDER)
+            local_path = os.path.join(app.root_path, UPLOAD_FOLDER, value)
+            if os.path.exists(local_path):
+                # Detect extension to set correct mime type
+                ext = os.path.splitext(value)[1].lower()
+                mime = 'application/octet-stream'
+                if ext == '.pdf':
+                    mime = 'application/pdf'
+                elif ext in ('.jpg', '.jpeg'):
+                    mime = 'image/jpeg'
+                elif ext == '.png':
+                    mime = 'image/png'
+                elif ext in ('.docx', '.doc'):
+                    mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                return send_from_directory(os.path.join(app.root_path, UPLOAD_FOLDER), value, as_attachment=False)
+
+            # Fallback to external base URL
+            base = app.config.get('UPLOAD_URL_BASE') or f"https://{app.config.get('MYSQL_HOST')}/uploads"
+            external_url = base.rstrip('/') + '/' + value
+            return redirect(external_url)
+
+        # Unknown format
+        return ("File format not supported", 415)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return (f"Error: {str(e)}", 500)
 
 
 @app.route('/admin/job-description', methods=['GET', 'POST'])
@@ -349,6 +449,23 @@ def admin_job_description():
 
     return render_template('admin_job_description.html', description=description)
 
+
+# Check what table name is resolved
+conn = admin_app.get_db()
+cur = conn.cursor()
+
+table = admin_app.get_resolved_table('free_internship')
+print(f"Using table: {table}")
+
+# Get a sample row with all file columns
+cur.execute(f"SELECT id, name, resume, id_proof, project_document FROM {table} LIMIT 1")
+row = cur.fetchone()
+print(f"Sample row: {row}")
+print(f"Resume type: {type(row['resume']) if row else 'No data'}")
+print(f"Resume value: {row['resume'] if row else 'No data'}")
+
+cur.close()
+conn.close()
 
 if __name__ == '__main__':
     # Ensure a secret key exists for session support

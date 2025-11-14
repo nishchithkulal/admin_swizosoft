@@ -90,14 +90,16 @@ function viewFile(internshipId, fileType, internshipType) {
     fetch(`/admin/api/get-file/${internshipId}/${fileType}?type=${internshipType}`)
         .then(response => response.json())
         .then(data => {
-            if (data.success && data.file_url) {
-                // If server provided a URL, display or open it
-                displayFileUrlInModal(data.file_url, data.file_name, fileType);
-            } else if (data.success && data.file_name) {
-                // fallback to filename only
-                displayFileInModal(data.file_name, fileType);
+            if (data.success) {
+                // Prefer inplace_url for inline viewing; fallback to file_url
+                const url = data.inplace_url || data.file_url;
+                if (url) {
+                    displayFileUrlInModal(url, data.file_name || '', fileType);
+                } else {
+                    alert('File URL not available');
+                }
             } else {
-                alert('File not found in database');
+                alert('File not found: ' + (data.error || 'unknown error'));
             }
         })
         .catch(error => {
@@ -137,8 +139,10 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
         'project': 'Project'
     }[fileType] || fileType;
 
-    // Decide how to present the file based on extension
+    // Detect file type by extension
     const lower = (fileName || fileUrl || '').toLowerCase();
+    
+    // PDFs: embed in iframe
     if (lower.endsWith('.pdf')) {
         fileViewerContainer.innerHTML = `
             <div style="padding: 10px;">
@@ -149,18 +153,29 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
         return;
     }
 
+    // Images: embed with img tag
     if (lower.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
         fileViewerContainer.innerHTML = `
             <div style="padding: 10px; text-align:center;">
                 <h3>${fileTypeLabel}</h3>
-                <img src="${fileUrl}" style="max-width:100%;height:auto;border-radius:6px;" />
+                <img src="${fileUrl}" style="max-width:100%;height:auto;border-radius:6px;" onload="console.log('Image loaded')" onerror="console.log('Image failed to load')" />
             </div>`;
         fileModal.style.display = 'block';
         return;
     }
 
-    // For other types (docx, txt, unknown) open in new tab to allow download/view
-    window.open(fileUrl, '_blank');
+    // For other types (docx, doc, xlsx, etc.), open in new tab
+    fileViewerContainer.innerHTML = `
+        <div style="padding: 20px;">
+            <h3>${fileTypeLabel}</h3>
+            <p>Opening <strong>${fileName}</strong> in a new tab...</p>
+            <p><a href="${fileUrl}" target="_blank" style="color:#0066cc;">Click here if it doesn't open automatically</a></p>
+        </div>`;
+    fileModal.style.display = 'block';
+    // Auto-open in new tab after a short delay
+    setTimeout(() => {
+        window.open(fileUrl, '_blank');
+    }, 500);
 }
 
 function closeFileModal() {
