@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swizosoft Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <h2>SWIZOSOFT</h2>
+                <span class="admin-badge">Admin Panel</span>
+            </div>
+            <div class="navbar-right">
+                <span class="welcome-text">Welcome, Admin</span>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <div class="content">
+            <!-- Free Internship Table -->
+            <section class="table-section">
+                <div class="section-header">
+                    <h3>Free Internship</h3>
+                    <span class="table-count" id="free-count">0</span>
+                </div>
+                <div class="table-wrapper">
+                    <table class="internship-table" id="freeTable">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>USN</th>
+                                <th>View Resume</th>
+                                <th>View Project</th>
+                                <th>View ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="freeTableBody">
+                            <tr class="loading-row">
+                                <td colspan="5">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Paid Internship Table -->
+            <section class="table-section">
+                <div class="section-header">
+                    <h3>Paid Internship</h3>
+                    <span class="table-count" id="paid-count">0</span>
+                </div>
+                <div class="table-wrapper">
+                    <table class="internship-table" id="paidTable">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>USN</th>
+                                <th>View Resume</th>
+                                <th>View Project</th>
+                                <th>View ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paidTableBody">
+                            <tr class="loading-row">
+                                <td colspan="5">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- File Viewer Modal -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="fileViewerContainer">
+                <!-- File content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
