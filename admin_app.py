@@ -179,9 +179,110 @@ def admin_get_internships():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/admin/api/edit-profile/<int:internship_id>', methods=['PUT'])
+@login_required
+def admin_edit_profile(internship_id):
+    """Edit user profile fields (not files).
+       PUT params (JSON body):
+       - type: 'free' or 'paid'
+       - fields: dict of column_name: value pairs to update
+       
+       Non-editable fields: reason, applicationid, status, domain, id, file columns, timestamps
+       
+       Example: PUT /admin/api/edit-profile/123?type=free
+       Body: {"name": "John Doe", "usn": "CS123", "email": "john@example.com"}
+    """
+    internship_type = request.args.get('type', 'free')
+    
+    try:
+        data = request.get_json() or {}
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Exclude file-related columns and non-editable fields
+        excluded_cols = ['id', 'id_proof', 'resume', 'project_document', 'payment_screenshot', 
+                        'id_proof_content', 'resume_content', 'project_document_content',
+                        'reason', 'applicationid', 'application_id', 'status', 'domain', 'created_at', 'updated_at']
+        
+        # Build update query
+        update_fields = []
+        update_values = []
+        
+        for col, val in data.items():
+            if col.lower() not in [c.lower() for c in excluded_cols]:
+                update_fields.append(f"{col} = %s")
+                update_values.append(val)
+        
+        if not update_fields:
+            return jsonify({'success': False, 'error': 'No valid fields to update'}), 400
+        
+        update_values.append(internship_id)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+        
+        query = f"UPDATE {table} SET {', '.join(update_fields)} WHERE id = %s"
+        
+        try:
+            cursor.execute(query, tuple(update_values))
+            conn.commit()
+        except Exception:
+            # Try alternate table name
+            alt_table = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            alt_query = f"UPDATE {alt_table} SET {', '.join(update_fields)} WHERE id = %s"
+            cursor.execute(alt_query, tuple(update_values))
+            conn.commit()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Profile updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/get-profile/<int:internship_id>', methods=['GET'])
+@login_required
+def admin_get_profile(internship_id):
+    """Get full profile data for editing.
+       Query param: type=free|paid
+    """
+    internship_type = request.args.get('type', 'free')
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+        
+        # Get all columns except BLOBs
+        query = f"SELECT * FROM {table} WHERE id = %s LIMIT 1"
+        
+        try:
+            cursor.execute(query, (internship_id,))
+            result = cursor.fetchone()
+        except Exception:
+            alt_table = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            alt_query = f"SELECT * FROM {alt_table} WHERE id = %s LIMIT 1"
+            cursor.execute(alt_query, (internship_id,))
+            result = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Profile not found'}), 404
+        
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/admin/api/get-file/<int:internship_id>/<file_type>')
 @login_required
 def admin_get_file(internship_id, file_type):
+
     """Get file from database (either from document_store BLOB or application string column)
        file_type: id_proof, resume, project
        Returns: inplace_url to fetch the BLOB

@@ -112,6 +112,7 @@ function populateTable(type, data) {
             </div>
             
             <div class="action-buttons">
+                <button class="action-btn edit-btn" onclick="openEditModal(${row.id}, '${type}')">✎ Edit</button>
                 <button class="action-btn accept-btn" onclick="updateStatus(${row.id}, 'ACCEPTED', '${type}')">✓ Accept</button>
                 <button class="action-btn reject-btn" onclick="updateStatus(${row.id}, 'REJECTED', '${type}')">✕ Reject</button>
             </div>
@@ -290,6 +291,156 @@ function closeFileModal() {
     fileModal.classList.remove('show');
     fileViewerContainer.innerHTML = '';
     document.getElementById('downloadBtn').style.display = 'none';
+}
+
+function openEditModal(internshipId, internshipType) {
+    // Fetch full profile data
+    fetch(`/admin/api/get-profile/${internshipId}?type=${internshipType}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showEditModal(internshipId, internshipType, data.data);
+            } else {
+                alert('Error loading profile: ' + (data.error || 'Unknown'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error loading profile');
+        });
+}
+
+function showEditModal(internshipId, internshipType, profileData) {
+    // Exclude file-related, sensitive, and non-editable columns
+    const excludeColumns = ['id', 'id_proof', 'resume', 'project_document', 'payment_screenshot', 
+                           'id_proof_content', 'resume_content', 'project_document_content', 'created_at', 'updated_at',
+                           'reason', 'applicationid', 'application_id', 'status', 'domain'];
+    
+    const collegesList = [
+        "SRINIVAS INSTITUTE OF TECHNOLOGY",
+        "AJ INSTITUTE OF ENGINEERING AND TECHNOLOGY",
+        "BEARYS INSTITUTE OF TECHNOLOGY",
+        "SAHYADRI COLLEGE OF ENGINEERING AND MANAGEMENT",
+        "KVG COLLEGE OF ENGINEERING",
+        "CANARA ENGINEERING COLLEGE",
+        "MANGALORE INSTITUTE OF TECHNOLOGY & ENGINEERING",
+        "ST JOSEPH ENGINEERING COLLEGE",
+        "ALVAS INSTITUTE OF ENGINEERING AND TECHNOLOGY"
+    ];
+    
+    const branchesList = [
+        "COMPUTER SCIENCE",
+        "INFORMATION TECHNOLOGY",
+        "ELECTRONICS AND COMMUNICATION",
+        "MECHANICAL ENGINEERING",
+        "CIVIL ENGINEERING",
+        "ELECTRICAL ENGINEERING"
+    ];
+    
+    let formHTML = '';
+    for (const [key, value] of Object.entries(profileData)) {
+        if (!excludeColumns.includes(key.toLowerCase())) {
+            const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+            const storedValue = (value || '').toString().trim();
+            
+            // Create dropdown for college/institution fields
+            if (key.toLowerCase().includes('college') || key.toLowerCase().includes('institution') || key.toLowerCase().includes('institute')) {
+                formHTML += `
+                    <div class="form-group">
+                        <label for="field_${key}">${displayKey}</label>
+                        <select id="field_${key}" class="form-input">
+                            <option value="">-- Select College --</option>
+                            ${collegesList.map(college => `<option value="${college}" ${storedValue.toUpperCase() === college.toUpperCase() ? 'selected' : ''}>${college}</option>`).join('')}
+                        </select>
+                    </div>
+                `;
+            }
+            // Create dropdown for branch fields
+            else if (key.toLowerCase().includes('branch') || key.toLowerCase().includes('department') || key.toLowerCase().includes('stream')) {
+                formHTML += `
+                    <div class="form-group">
+                        <label for="field_${key}">${displayKey}</label>
+                        <select id="field_${key}" class="form-input">
+                            ${branchesList.map(branch => `<option value="${branch}" ${storedValue.toUpperCase() === branch.toUpperCase() ? 'selected' : ''}>${branch}</option>`).join('')}
+                        </select>
+                    </div>
+                `;
+            } else {
+                formHTML += `
+                    <div class="form-group">
+                        <label for="field_${key}">${displayKey}</label>
+                        <input type="text" id="field_${key}" value="${storedValue}" class="form-input">
+                    </div>
+                `;
+            }
+        }
+    }
+    
+    const modalHTML = `
+        <div class="edit-modal show" id="editModal">
+            <div class="edit-modal-content">
+                <div class="edit-modal-header">
+                    <h2>Edit Profile</h2>
+                    <button class="close-btn" onclick="closeEditModal()">✕</button>
+                </div>
+                <div class="edit-modal-body">
+                    <form id="editForm">
+                        ${formHTML}
+                    </form>
+                </div>
+                <div class="edit-modal-footer">
+                    <button class="btn-cancel" onclick="closeEditModal()">Cancel</button>
+                    <button class="btn-save" onclick="saveProfile(${internshipId}, '${internshipType}')">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove old modal if exists
+    const oldModal = document.getElementById('editModal');
+    if (oldModal) oldModal.remove();
+    
+    // Add new modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('editModal');
+    if (modal) modal.remove();
+}
+
+function saveProfile(internshipId, internshipType) {
+    const form = document.getElementById('editForm');
+    const formData = new FormData(form);
+    
+    const updateData = {};
+    const inputs = form.querySelectorAll('.form-input');
+    inputs.forEach(input => {
+        const fieldName = input.id.replace('field_', '');
+        updateData[fieldName] = input.value;
+    });
+    
+    fetch(`/admin/api/edit-profile/${internshipId}?type=${internshipType}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Profile updated successfully!');
+            closeEditModal();
+            loadInternships(currentType);
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error saving profile');
+    });
 }
 
 // Optional: refresh every 5 minutes
