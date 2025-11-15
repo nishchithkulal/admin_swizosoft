@@ -10,86 +10,70 @@
     <nav class="navbar">
         <div class="navbar-container">
             <div class="navbar-brand">
-                <h2>SWIZOSOFT</h2>
-                <span class="admin-badge">Admin Panel</span>
+                <div class="logo-icon">🎓</div>
+                <h1>Swizosoft</h1>
             </div>
-            <div class="navbar-right">
-                <a href="{{ url_for('admin_job_description') }}" class="logout-btn">Job Description</a>
-                <a href="{{ url_for('admin_logout') }}" class="logout-btn">Logout</a>
+            <div class="navbar-menu">
+                <a href="{{ url_for('admin_dashboard') }}" class="nav-link active">Dashboard</a>
+                <a href="{{ url_for('admin_job_description') }}" class="nav-link">Job Description</a>
+                <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link">Logout</a>
             </div>
         </div>
     </nav>
 
     <div class="dashboard-container">
-        <div class="content">
-            <!-- Toggle Buttons -->
-            <div class="toggle-buttons">
-                <button class="toggle-btn active" id="freeBtn" onclick="switchInternship('free')">
-                    Free Internship
-                </button>
-                <button class="toggle-btn" id="paidBtn" onclick="switchInternship('paid')">
-                    Paid Internship
-                </button>
-            </div>
-
-            <!-- Free Internship Table -->
-            <section class="table-section" id="freeSection">
-                <div class="section-header">
-                    <h3>Free Internship</h3>
-                    <span class="table-count" id="free-count">0</span>
-                </div>
-                <div class="table-wrapper">
-                    <table class="internship-table" id="freeTable">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>USN</th>
-                                <th>View ID Proof</th>
-                                <th>View Resume</th>
-                                <th>View Project</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="freeTableBody">
-                            <tr class="loading-row">
-                                <td colspan="6">Loading...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>            <!-- Paid Internship Table -->
-            <section class="table-section" id="paidSection" style="display: none;">
-                <div class="section-header">
-                    <h3>Paid Internship</h3>
-                    <span class="table-count" id="paid-count">0</span>
-                </div>
-                <div class="table-wrapper">
-                    <table class="internship-table" id="paidTable">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>USN</th>
-                                <th>View ID Proof</th>
-                                <th>View Resume</th>
-                                <th>View Payment Screenshots</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="paidTableBody">
-                            <tr class="loading-row">
-                                <td colspan="6">Loading...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+        <div class="page-header">
+            <h2>Manage Applications</h2>
+            <p>View and manage internship applicants</p>
         </div>
+
+        <!-- Toggle Buttons -->
+        <div class="internship-selector">
+            <button class="selector-btn active" id="freeBtn" onclick="switchInternship('free')">
+                📗 Free Internship
+            </button>
+            <button class="selector-btn" id="paidBtn" onclick="switchInternship('paid')">
+                👑 Paid Internship
+            </button>
+        </div>
+
+        <!-- Free Internship Section -->
+        <section id="freeSection" class="internship-section">
+            <div class="section-header">
+                <div>
+                    <h3>Free Internship Applicants</h3>
+                    <p>Applications received: <span class="count-badge" id="free-count">0</span></p>
+                </div>
+            </div>
+            <div class="cards-container" id="freeTableBody">
+                <div class="loading-card">
+                    <div class="spinner"></div>
+                    <p>Loading applications...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Paid Internship Section -->
+        <section id="paidSection" class="internship-section" style="display: none;">
+            <div class="section-header">
+                <div>
+                    <h3>Paid Internship Applicants</h3>
+                    <p>Applications received: <span class="count-badge" id="paid-count">0</span></p>
+                </div>
+            </div>
+            <div class="cards-container" id="paidTableBody">
+                <div class="loading-card">
+                    <div class="spinner"></div>
+                    <p>Loading applications...</p>
+                </div>
+            </div>
+        </section>
     </div>
 
     <!-- File Viewer Modal -->
     <div id="fileModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeFileModal()">&times;</span>
+            <button class="modal-close" onclick="closeFileModal()">✕</button>
             <div id="fileViewerContainer">
                 <!-- File content will be loaded here -->
             </div>

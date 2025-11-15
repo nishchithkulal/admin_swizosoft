@@ -59,68 +59,76 @@ function loadInternships(type) {
 }
 
 function populateTable(type, data) {
-    const tableBody = type === 'free' ? freeTableBody : paidTableBody;
+    const container = type === 'free' ? freeTableBody : paidTableBody;
     const countElem = type === 'free' ? freeCount : paidCount;
-    tableBody.innerHTML = '';
+    container.innerHTML = '';
+    
     if (!data || data.length === 0) {
-        const colSpan = type === 'free' ? 6 : 6;
-        tableBody.innerHTML = `<tr class="empty-row"><td colspan="${colSpan}">No records found</td></tr>`;
+        container.innerHTML = `
+            <div class="empty-card">
+                <div class="empty-card-icon">📋</div>
+                <p>No applications yet</p>
+            </div>
+        `;
         countElem.textContent = '0';
         return;
     }
+    
     countElem.textContent = data.length;
+    
     data.forEach(row => {
-        const tr = document.createElement('tr');
-        let buttonsHtml = '';
+        const card = document.createElement('div');
+        card.className = 'applicant-card';
         
+        let fileButtons = '';
         if (type === 'free') {
-            buttonsHtml = `
-                <td>
-                    <button class="file-btn" onclick="viewFile(${row.id}, 'id_proof', '${type}')">View ID Proof</button>
-                </td>
-                <td>
-                    <button class="file-btn" onclick="viewFile(${row.id}, 'resume', '${type}')">View Resume</button>
-                </td>
-                <td>
-                    <button class="file-btn" onclick="viewFile(${row.id}, 'project', '${type}')">View Project</button>
-                </td>
-                <td>
-                    <button class="action-btn accept-btn" onclick="updateStatus(${row.id}, 'ACCEPTED', '${type}')">Accept</button>
-                    <button class="action-btn reject-btn" onclick="updateStatus(${row.id}, 'REJECTED', '${type}')">Reject</button>
-                </td>
+            fileButtons = `
+                <button class="file-button" onclick="viewFile(${row.id}, 'id_proof', '${type}')">📄 View ID Proof</button>
+                <button class="file-button" onclick="viewFile(${row.id}, 'resume', '${type}')">📄 View Resume</button>
+                <button class="file-button" onclick="viewFile(${row.id}, 'project', '${type}')">📁 View Project</button>
             `;
         } else {
-            // Paid internship - has payment screenshot instead of project
-            buttonsHtml = `
-                <td>
-                    <button class="file-btn" onclick="viewFile(${row.id}, 'id_proof', '${type}')">View ID Proof</button>
-                </td>
-                <td>
-                    <button class="file-btn" onclick="viewFile(${row.id}, 'resume', '${type}')">View Resume</button>
-                </td>
-                <td>
-                    <button class="file-btn" onclick="viewFile(${row.id}, 'payment', '${type}')">View Payment Screenshots</button>
-                </td>
-                <td>
-                    <button class="action-btn accept-btn" onclick="updateStatus(${row.id}, 'ACCEPTED', '${type}')">Accept</button>
-                    <button class="action-btn reject-btn" onclick="updateStatus(${row.id}, 'REJECTED', '${type}')">Reject</button>
-                </td>
+            fileButtons = `
+                <button class="file-button" onclick="viewFile(${row.id}, 'id_proof', '${type}')">📄 View ID Proof</button>
+                <button class="file-button" onclick="viewFile(${row.id}, 'resume', '${type}')">📄 View Resume</button>
+                <button class="file-button" onclick="viewFile(${row.id}, 'payment', '${type}')">💳 View Payment Screenshot</button>
             `;
         }
         
-        tr.innerHTML = `
-            <td>${row.name || '-'}</td>
-            <td>${row.usn || '-'}</td>
-            ${buttonsHtml}
+        const status = row.status ? row.status.toUpperCase() : 'PENDING';
+        const statusClass = status === 'ACCEPTED' ? 'accepted' : status === 'REJECTED' ? 'rejected' : 'pending';
+        
+        card.innerHTML = `
+            <div class="card-header">
+                <div>
+                    <div class="applicant-name">${row.name || 'N/A'}</div>
+                    <div class="applicant-usn">USN: ${row.usn || 'N/A'}</div>
+                </div>
+                <span class="card-status ${statusClass}">${status}</span>
+            </div>
+            
+            <div class="card-content">
+                ${fileButtons}
+            </div>
+            
+            <div class="action-buttons">
+                <button class="action-btn accept-btn" onclick="updateStatus(${row.id}, 'ACCEPTED', '${type}')">✓ Accept</button>
+                <button class="action-btn reject-btn" onclick="updateStatus(${row.id}, 'REJECTED', '${type}')">✕ Reject</button>
+            </div>
         `;
-        tableBody.appendChild(tr);
+        
+        container.appendChild(card);
     });
 }
 
 function showError(type, message) {
-    const tableBody = type === 'free' ? freeTableBody : paidTableBody;
-    const colSpan = type === 'free' ? 6 : 6;
-    tableBody.innerHTML = `<tr class="empty-row"><td colspan="${colSpan}">${message}</td></tr>`;
+    const container = type === 'free' ? freeTableBody : paidTableBody;
+    container.innerHTML = `
+        <div class="empty-card">
+            <div class="empty-card-icon">⚠️</div>
+            <p>${message}</p>
+        </div>
+    `;
 }
 
 function updateStatus(internshipId, status, internshipType) {
@@ -222,7 +230,8 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
     const fileTypeLabel = {
         'id_proof': 'ID Proof',
         'resume': 'Resume',
-        'project': 'Project'
+        'project': 'Project',
+        'payment': 'Payment Screenshot'
     }[fileType] || fileType;
 
     // Detect file type by extension
@@ -231,33 +240,27 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
     // PDFs: embed in iframe
     if (lower.endsWith('.pdf')) {
         fileViewerContainer.innerHTML = `
-            <div style="padding: 10px;">
-                <h3>${fileTypeLabel}</h3>
-                <iframe src="${fileUrl}" style="width:100%;height:600px;border:none;"></iframe>
-            </div>`;
-        fileModal.style.display = 'block';
+            <h3>${fileTypeLabel}</h3>
+            <iframe src="${fileUrl}" style="width:100%;height:600px;border:none;"></iframe>`;
+        fileModal.classList.add('show');
         return;
     }
 
     // Images: embed with img tag
     if (lower.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
         fileViewerContainer.innerHTML = `
-            <div style="padding: 10px; text-align:center;">
-                <h3>${fileTypeLabel}</h3>
-                <img src="${fileUrl}" style="max-width:100%;height:auto;border-radius:6px;" onload="console.log('Image loaded')" onerror="console.log('Image failed to load')" />
-            </div>`;
-        fileModal.style.display = 'block';
+            <h3>${fileTypeLabel}</h3>
+            <img src="${fileUrl}" style="max-width:100%;height:auto;border-radius:6px;" onload="console.log('Image loaded')" onerror="console.log('Image failed to load')" />`;
+        fileModal.classList.add('show');
         return;
     }
 
     // For other types (docx, doc, xlsx, etc.), open in new tab
     fileViewerContainer.innerHTML = `
-        <div style="padding: 20px;">
-            <h3>${fileTypeLabel}</h3>
-            <p>Opening <strong>${fileName}</strong> in a new tab...</p>
-            <p><a href="${fileUrl}" target="_blank" style="color:#0066cc;">Click here if it doesn't open automatically</a></p>
-        </div>`;
-    fileModal.style.display = 'block';
+        <h3>${fileTypeLabel}</h3>
+        <p>Opening <strong>${fileName}</strong> in a new tab...</p>
+        <p><a href="${fileUrl}" target="_blank" style="color:#0066cc;">Click here if it doesn't open automatically</a></p>`;
+    fileModal.classList.add('show');
     // Auto-open in new tab after a short delay
     setTimeout(() => {
         window.open(fileUrl, '_blank');
@@ -265,7 +268,7 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
 }
 
 function closeFileModal() {
-    fileModal.style.display = 'none';
+    fileModal.classList.remove('show');
     fileViewerContainer.innerHTML = '';
 }
 
