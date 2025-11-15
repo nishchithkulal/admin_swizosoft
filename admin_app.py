@@ -219,10 +219,23 @@ def admin_get_file(internship_id, file_type):
         cursor.close()
         conn.close()
         
-        # If found BLOB in document_store, use inplace_url to serve it
+        # If found BLOB in document_store, detect file type and use inplace_url to serve it
         if result and result.get(blob_col):
+            data = bytes(result.get(blob_col))
+            detected_ext = 'bin'
+            
+            # Detect file type from magic bytes
+            if data.startswith(b'%PDF'):
+                detected_ext = 'pdf'
+            elif data.startswith(b'\xff\xd8'):
+                detected_ext = 'jpg'
+            elif data.startswith(b'\x89PNG'):
+                detected_ext = 'png'
+            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX/PPTX
+                detected_ext = 'docx'
+            
             inplace_url = url_for('admin_serve_file_inplace', internship_id=internship_id, file_type=file_type, type=internship_type)
-            return jsonify({'success': True, 'file_name': f'{file_type}.blob', 'file_type': file_type, 'inplace_url': inplace_url})
+            return jsonify({'success': True, 'file_name': f'{file_type}.{detected_ext}', 'file_type': file_type, 'inplace_url': inplace_url})
         
         # Fallback: try to get filename from application table
         conn = get_db()
@@ -548,15 +561,395 @@ def admin_get_payment_screenshots(internship_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/admin/view-file/<int:internship_id>/<file_type>')
+@login_required
+def admin_view_file(internship_id, file_type):
+    """Display file in a separate page with download button in top-right."""
+    internship_type = request.args.get('type', 'free')
+    
+    if file_type not in ('id_proof', 'resume', 'project', 'payment'):
+        return ("Invalid file type", 400)
+    
+    try:
+        # Get file info
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # First, try document_store for BLOBs
+        filename = None
+        detected_ext = 'bin'
+        
+        if file_type != 'payment':
+            doc_store_table = 'paid_document_store' if internship_type == 'paid' else 'free_document_store'
+            app_id_col = 'paid_internship_application_id' if internship_type == 'paid' else 'free_internship_application_id'
+            
+            blob_column_map = {
+                'id_proof': 'id_proof_content',
+                'resume': 'resume_content',
+                'project': 'project_document_content',
+            }
+            blob_col = blob_column_map.get(file_type)
+            
+            if blob_col:
+                try:
+                    query = f"SELECT {blob_col} FROM {doc_store_table} WHERE {app_id_col} = %s"
+                    cursor.execute(query, (internship_id,))
+                    result = cursor.fetchone()
+                    if result and result.get(blob_col):
+                        data = bytes(result.get(blob_col))
+                        
+                        if data.startswith(b'%PDF'):
+                            detected_ext = 'pdf'
+                        elif data.startswith(b'\xff\xd8'):
+                            detected_ext = 'jpg'
+                        elif data.startswith(b'\x89PNG'):
+                            detected_ext = 'png'
+                        elif data.startswith(b'PK\x03\x04'):
+                            detected_ext = 'docx'
+                        
+                        filename = f'{file_type}.{detected_ext}'
+                except Exception:
+                    pass
+        
+        cursor.close()
+        conn.close()
+        
+        if not filename:
+            filename = f'{file_type}.bin'
+        
+        # Build the download URL
+        download_url = url_for('admin_serve_file_inplace', internship_id=internship_id, file_type=file_type, type=internship_type)
+        file_view_url = url_for('admin_serve_file_inplace', internship_id=internship_id, file_type=file_type, type=internship_type)
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{filename} - Swizosoft</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+        }}
+        
+        .viewer-container {{
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }}
+        
+        .viewer-header {{
+            background: white;
+            padding: 15px 20px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        
+        .viewer-title {{
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            flex: 1;
+        }}
+        
+        .download-btn {{
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        
+        .download-btn:hover {{
+            background: #218838;
+        }}
+        
+        .viewer-content {{
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow: auto;
+            background: #fff;
+        }}
+        
+        .viewer-content img {{
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        
+        .viewer-content iframe {{
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+        }}
+        
+        .loading {{
+            text-align: center;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>
+    <div class="viewer-container">
+        <div class="viewer-header">
+            <div class="viewer-title">{filename}</div>
+            <a href="{download_url}?download=1" class="download-btn" download="{filename}">
+                ⬇️ Download
+            </a>
+        </div>
+        <div class="viewer-content" id="viewerContent">
+            <div class="loading">Loading document...</div>
+        </div>
+    </div>
+    
+    <script>
+        const filename = "{filename}";
+        const fileViewUrl = "{file_view_url}";
+        const container = document.getElementById('viewerContent');
+        
+        // Determine file type from extension
+        const ext = filename.split('.').pop().toLowerCase();
+        
+        if (ext === 'pdf') {{
+            const iframe = document.createElement('iframe');
+            iframe.src = fileViewUrl;
+            container.innerHTML = '';
+            container.appendChild(iframe);
+        }} else if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext)) {{
+            const img = document.createElement('img');
+            img.src = fileViewUrl;
+            img.onload = function() {{
+                container.innerHTML = '';
+                container.appendChild(img);
+            }};
+            img.onerror = function() {{
+                container.innerHTML = '<div class="loading">Error loading image</div>';
+            }};
+        }} else if (['docx', 'xlsx', 'pptx'].includes(ext)) {{
+            const encodedUrl = encodeURIComponent(fileViewUrl);
+            const viewerUrl = 'https://docs.google.com/gview?url=' + encodedUrl + '&embedded=true';
+            const iframe = document.createElement('iframe');
+            iframe.src = viewerUrl;
+            container.innerHTML = '';
+            container.appendChild(iframe);
+        }} else {{
+            const iframe = document.createElement('iframe');
+            iframe.src = fileViewUrl;
+            container.innerHTML = '';
+            container.appendChild(iframe);
+        }}
+    </script>
+</body>
+</html>
+"""
+        return html_content
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+
+
 @app.route('/admin/serve-file-inplace/<int:internship_id>/<file_type>')
 @login_required
 def admin_serve_file_inplace(internship_id, file_type):
+
     """Serve file content inline for viewing in-browser.
        Tries document_store (BLOBs) first, then falls back to filenames or URLs.
-       Query param: type=free|paid
+       Query param: type=free|paid, download=1 (to force download)
        file_type: id_proof, resume, project, payment
     """
     internship_type = request.args.get('type', 'free')
+    force_download = request.args.get('download', '0') == '1'
+    
+    if file_type not in ('id_proof', 'resume', 'project', 'payment'):
+        return ("Invalid file type", 400)
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # First, try document_store for BLOBs
+        if file_type != 'payment':
+            doc_store_table = 'paid_document_store' if internship_type == 'paid' else 'free_document_store'
+            app_id_col = 'paid_internship_application_id' if internship_type == 'paid' else 'free_internship_application_id'
+            
+            blob_column_map = {
+                'id_proof': 'id_proof_content',
+                'resume': 'resume_content',
+                'project': 'project_document_content',
+            }
+            blob_col = blob_column_map.get(file_type)
+            
+            if blob_col:
+                try:
+                    query = f"SELECT {blob_col} FROM {doc_store_table} WHERE {app_id_col} = %s"
+                    cursor.execute(query, (internship_id,))
+                    result = cursor.fetchone()
+                    if result and result.get(blob_col):
+                        data = bytes(result.get(blob_col))
+                        mime = 'application/octet-stream'
+                        filename = f'{file_type}.bin'
+                        
+                        if data.startswith(b'%PDF'):
+                            mime = 'application/pdf'
+                            filename = f'{file_type}.pdf'
+                        elif data.startswith(b'\xff\xd8'):
+                            mime = 'image/jpeg'
+                            filename = f'{file_type}.jpg'
+                        elif data.startswith(b'\x89PNG'):
+                            mime = 'image/png'
+                            filename = f'{file_type}.png'
+                        elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX magic bytes
+                            mime = 'application/octet-stream'
+                            filename = f'{file_type}.docx'
+                        
+                        cursor.close()
+                        conn.close()
+                        
+                        # Return with appropriate headers
+                        from flask import make_response
+                        response = make_response(data)
+                        response.headers['Content-Type'] = mime
+                        if force_download:
+                            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+                        else:
+                            response.headers['Content-Disposition'] = 'inline'
+                        response.headers['Cache-Control'] = 'public, max-age=3600'
+                        return response
+                except Exception:
+                    pass
+        
+        # Fallback: try application table (filenames or URLs)
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+        
+        column_map = {
+            'id_proof': 'id_proof',
+            'resume': 'resume',
+            'project': 'project_document',
+            'payment': 'payment_screenshot',
+        }
+        column = column_map.get(file_type, file_type)
+        
+        query = f"SELECT {column} FROM {table} WHERE id = %s"
+        try:
+            cursor.execute(query, (internship_id,))
+            result = cursor.fetchone()
+        except Exception:
+            if file_type == 'payment':
+                # Try payment_proof for payment files
+                try:
+                    query = f"SELECT payment_proof FROM {table} WHERE id = %s"
+                    cursor.execute(query, (internship_id,))
+                    result = cursor.fetchone()
+                except Exception:
+                    result = None
+            else:
+                result = None
+
+        if not result:
+            alt_table = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            try:
+                query = f"SELECT {column} FROM {alt_table} WHERE id = %s"
+                cursor.execute(query, (internship_id,))
+                result = cursor.fetchone()
+            except Exception:
+                result = None
+
+        cursor.close()
+        conn.close()
+
+        if not result:
+            return ("File not found", 404)
+        
+        # Get the value (try column or payment_proof)
+        value = result.get(column) or result.get('payment_proof') or result.get('payment_screenshot')
+        if not value:
+            return ("File not found", 404)
+
+        # If DB stored file as bytes (BLOB)
+        if isinstance(value, (bytes, bytearray)):
+            data = bytes(value)
+            mime = 'application/octet-stream'
+            filename = f'{file_type}.bin'
+            
+            if data.startswith(b'%PDF'):
+                mime = 'application/pdf'
+                filename = f'{file_type}.pdf'
+            elif data.startswith(b'\xff\xd8'):
+                mime = 'image/jpeg'
+                filename = f'{file_type}.jpg'
+            elif data.startswith(b'\x89PNG'):
+                mime = 'image/png'
+                filename = f'{file_type}.png'
+            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX
+                mime = 'application/octet-stream'
+                filename = f'{file_type}.docx'
+            
+            # Return with appropriate headers
+            from flask import make_response
+            response = make_response(data)
+            response.headers['Content-Type'] = mime
+            if force_download:
+                response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            else:
+                response.headers['Content-Disposition'] = 'inline'
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+            return response
+
+        # If DB stored a string (filename or URL path)
+        if isinstance(value, str):
+            import os
+            if value.startswith('http://') or value.startswith('https://'):
+                return redirect(value)
+
+            local_path = os.path.join(app.root_path, UPLOAD_FOLDER, value)
+            if os.path.exists(local_path):
+                ext = os.path.splitext(value)[1].lower()
+                mime = 'application/octet-stream'
+                if ext == '.pdf':
+                    mime = 'application/pdf'
+                elif ext in ('.jpg', '.jpeg'):
+                    mime = 'image/jpeg'
+                elif ext == '.png':
+                    mime = 'image/png'
+                if force_download:
+                    return send_from_directory(os.path.join(app.root_path, UPLOAD_FOLDER), value, as_attachment=True)
+                else:
+                    return send_from_directory(os.path.join(app.root_path, UPLOAD_FOLDER), value, as_attachment=False)
+
+            base = app.config.get('UPLOAD_URL_BASE') or f"https://{app.config.get('MYSQL_HOST')}/uploads"
+            external_url = base.rstrip('/') + '/' + value
+            return redirect(external_url)
+
+        return ("File format not supported", 415)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return (f"Error: {str(e)}", 500)
     
     if file_type not in ('id_proof', 'resume', 'project', 'payment'):
         return ("Invalid file type", 400)
@@ -659,9 +1052,15 @@ def admin_serve_file_inplace(internship_id, file_type):
                 mime = 'image/jpeg'
             elif data.startswith(b'\x89PNG'):
                 mime = 'image/png'
-            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX
-                mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            return send_file(io.BytesIO(data), mimetype=mime, as_attachment=False)
+            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX - serve as octet-stream for Google Docs Viewer
+                mime = 'application/octet-stream'
+            # Force inline display and no caching so Google Docs can fetch it
+            from flask import make_response
+            response = make_response(data)
+            response.headers['Content-Type'] = mime
+            response.headers['Content-Disposition'] = 'inline'
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+            return response
 
         # If DB stored a string (filename or URL path)
         if isinstance(value, str):

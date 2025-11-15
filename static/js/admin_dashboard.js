@@ -162,7 +162,9 @@ function viewFile(internshipId, fileType, internshipType) {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    displayFileUrlInModal(data.inplace_url, data.file_name || '', 'payment');
+                    // Open viewer page
+                    const viewUrl = `/admin/view-file/${internshipId}/${fileType}?type=${internshipType}`;
+                    window.open(viewUrl, '_blank');
                 } else {
                     alert('Payment screenshot not found: ' + (data.error || 'unknown'));
                 }
@@ -174,25 +176,9 @@ function viewFile(internshipId, fileType, internshipType) {
         return;
     }
     
-    fetch(`/admin/api/get-file/${internshipId}/${fileType}?type=${internshipType}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Prefer inplace_url for inline viewing; fallback to file_url
-                const url = data.inplace_url || data.file_url;
-                if (url) {
-                    displayFileUrlInModal(url, data.file_name || '', fileType);
-                } else {
-                    alert('File URL not available');
-                }
-            } else {
-                alert('File not found: ' + (data.error || 'unknown error'));
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error loading file');
-        });
+    // Open viewer page for all file types
+    const viewUrl = `/admin/view-file/${internshipId}/${fileType}?type=${internshipType}`;
+    window.open(viewUrl, '_blank');
 }
 
 function displayFileInModal(fileName, fileType) {
@@ -219,7 +205,12 @@ function displayFileInModal(fileName, fileType) {
 }
 
 function displayFileUrlInModal(fileUrl, fileName, fileType) {
+    const fileTitle = document.getElementById('fileTitle');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const fileViewerContainer = document.getElementById('fileViewerContainer');
+    
     fileViewerContainer.innerHTML = '';
+    
     const fileTypeLabel = {
         'id_proof': 'ID Proof',
         'resume': 'Resume',
@@ -227,42 +218,78 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
         'payment': 'Payment Screenshot'
     }[fileType] || fileType;
 
+    // Set title
+    fileTitle.textContent = fileTypeLabel;
+    
+    // Create download URL with download=1 parameter
+    const downloadUrl = fileUrl.includes('?') ? fileUrl + '&download=1' : fileUrl + '?download=1';
+    downloadBtn.href = downloadUrl;
+    // ALWAYS hide initially - will show after content loads
+    downloadBtn.style.display = 'none';
+
     // Detect file type by extension
     const lower = (fileName || fileUrl || '').toLowerCase();
     
     // PDFs: embed in iframe
     if (lower.endsWith('.pdf')) {
-        fileViewerContainer.innerHTML = `
-            <h3>${fileTypeLabel}</h3>
-            <iframe src="${fileUrl}" style="width:100%;height:600px;border:none;"></iframe>`;
+        fileViewerContainer.innerHTML = `<iframe id="fileFrame" src="${fileUrl}" style="width:100%;height:550px;border:none;"></iframe>`;
         fileModal.classList.add('show');
+        // Show download button after iframe fully loads
+        const frame = document.getElementById('fileFrame');
+        frame.onload = function() {
+            console.log('PDF loaded');
+            downloadBtn.style.display = 'inline-flex';
+        };
+        frame.onerror = function() {
+            console.log('PDF load error');
+            downloadBtn.style.display = 'inline-flex';
+        };
         return;
     }
 
     // Images: embed with img tag
     if (lower.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
-        fileViewerContainer.innerHTML = `
-            <h3>${fileTypeLabel}</h3>
-            <img src="${fileUrl}" style="max-width:100%;height:auto;border-radius:6px;" onload="console.log('Image loaded')" onerror="console.log('Image failed to load')" />`;
+        fileViewerContainer.innerHTML = `<img id="fileImg" src="${fileUrl}" style="max-width:100%;height:auto;border-radius:6px;" />`;
         fileModal.classList.add('show');
+        // Show download button after image loads
+        const img = document.getElementById('fileImg');
+        img.onload = function() {
+            console.log('Image loaded');
+            downloadBtn.style.display = 'inline-flex';
+        };
+        img.onerror = function() {
+            console.log('Image load error');
+            downloadBtn.style.display = 'inline-flex';
+        };
         return;
     }
 
-    // For other types (docx, doc, xlsx, etc.), open in new tab
-    fileViewerContainer.innerHTML = `
-        <h3>${fileTypeLabel}</h3>
-        <p>Opening <strong>${fileName}</strong> in a new tab...</p>
-        <p><a href="${fileUrl}" target="_blank" style="color:#0066cc;">Click here if it doesn't open automatically</a></p>`;
+    // DOCX/DOC files: display using Google Docs Viewer
+    if (lower.match(/\.(docx|doc|xlsx|xls|pptx|ppt)$/)) {
+        const encodedUrl = encodeURIComponent(fileUrl);
+        // Show loading message first
+        fileViewerContainer.innerHTML = `<div style="text-align:center;padding:40px;color:#999;"><p>⏳ Loading document...</p></div>`;
+        fileViewerContainer.innerHTML += `<iframe id="fileFrame" src="https://docs.google.com/gview?url=${encodedUrl}&embedded=true" style="width:100%;height:550px;border:none;"></iframe>`;
+        fileModal.classList.add('show');
+        // Show download button after delay (Google Docs Viewer takes time)
+        setTimeout(() => {
+            console.log('Document ready (timeout)');
+            downloadBtn.style.display = 'inline-flex';
+        }, 3000);
+        return;
+    }
+
+    // For other types
+    fileViewerContainer.innerHTML = `<p>File type <strong>${fileName}</strong> cannot be previewed.</p><p>Click Download button to get this file.</p>`;
     fileModal.classList.add('show');
-    // Auto-open in new tab after a short delay
-    setTimeout(() => {
-        window.open(fileUrl, '_blank');
-    }, 500);
+    // Show download button immediately
+    downloadBtn.style.display = 'inline-flex';
 }
 
 function closeFileModal() {
     fileModal.classList.remove('show');
     fileViewerContainer.innerHTML = '';
+    document.getElementById('downloadBtn').style.display = 'none';
 }
 
 // Optional: refresh every 5 minutes

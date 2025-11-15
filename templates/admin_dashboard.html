@@ -73,7 +73,13 @@
     <!-- File Viewer Modal -->
     <div id="fileModal" class="modal">
         <div class="modal-content">
-            <button class="modal-close" onclick="closeFileModal()">✕</button>
+            <div class="modal-header">
+                <h3 id="fileTitle">File Viewer</h3>
+                <div class="modal-actions">
+                    <a id="downloadBtn" class="modal-download-btn" style="display:none;">⬇️ Download</a>
+                    <button class="modal-close" onclick="closeFileModal()">✕</button>
+                </div>
+            </div>
             <div id="fileViewerContainer">
                 <!-- File content will be loaded here -->
             </div>

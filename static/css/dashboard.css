@@ -424,10 +424,49 @@ body {
     }
 }
 
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 20px;
+    color: #333;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.modal-download-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.modal-download-btn:hover {
+    background: #218838;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
 .modal-close {
-    position: absolute;
-    top: 16px;
-    right: 16px;
     background: #f0f0f0;
     border: none;
     width: 36px;
@@ -440,6 +479,7 @@ body {
     justify-content: center;
     transition: all 0.3s ease;
     color: #666;
+    flex-shrink: 0;
 }
 
 .modal-close:hover {
