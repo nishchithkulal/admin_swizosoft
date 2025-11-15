@@ -6,6 +6,7 @@ import io
 from functools import wraps
 import admin_app
 import json
+import base64
 
 # Minimal Admin-only Flask app
 app = Flask(__name__)
@@ -13,6 +14,26 @@ app = Flask(__name__)
 # Load config from existing config.py
 from config import get_config
 app.config.from_object(get_config())
+
+# Configure SQLAlchemy for approved_candidates
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"mysql+pymysql://{app.config['MYSQL_USER']}:"
+    f"{app.config['MYSQL_PASSWORD']}@"
+    f"{app.config['MYSQL_HOST']}/"
+    f"{app.config['MYSQL_DB']}"
+)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Import and initialize SQLAlchemy
+from urllib.parse import quote_plus
+from models import db, ApprovedCandidate
+# URL-encode password to avoid parsing issues when it contains special characters
+encoded_pw = quote_plus(app.config.get('MYSQL_PASSWORD', ''))
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"mysql+pymysql://{app.config.get('MYSQL_USER')}:{encoded_pw}@{app.config.get('MYSQL_HOST')}/{app.config.get('MYSQL_DB')}?charset=utf8mb4"
+)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
 
 # SMTP / Mail settings (explicitly load per user request)
 app.config.update({
@@ -186,6 +207,12 @@ def admin_selected():
     return render_template('admin_selected.html')
 
 
+@app.route('/admin/approved-candidates')
+@login_required
+def admin_approved_candidates():
+    return render_template('admin_approved_candidates.html')
+
+
 @app.route('/admin/api/get-selected')
 @login_required
 def admin_api_get_selected():
@@ -229,6 +256,99 @@ def admin_api_get_selected():
         return jsonify({'success': True, 'data': processed_rows})
     except Exception as e:
         print(f"✗ Exception in /admin/api/get-selected: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/get-approved-candidates')
+@login_required
+def admin_api_get_approved_candidates():
+    """Fetch all approved candidates from approved_candidates table using SQLAlchemy ORM"""
+    try:
+        # Query all approved candidates ordered by created_at descending
+        approved_candidates = ApprovedCandidate.query.order_by(ApprovedCandidate.created_at.desc()).all()
+        
+        # Convert to list of dictionaries
+        processed_rows = []
+        for candidate in approved_candidates:
+            candidate_dict = candidate.to_dict()
+            
+            # Convert BLOB fields to base64 for JSON serialization
+            if candidate_dict.get('resume_content') and isinstance(candidate_dict['resume_content'], bytes):
+                candidate_dict['resume_content'] = base64.b64encode(candidate_dict['resume_content']).decode('utf-8')
+            if candidate_dict.get('project_document_content') and isinstance(candidate_dict['project_document_content'], bytes):
+                candidate_dict['project_document_content'] = base64.b64encode(candidate_dict['project_document_content']).decode('utf-8')
+            if candidate_dict.get('id_proof_content') and isinstance(candidate_dict['id_proof_content'], bytes):
+                candidate_dict['id_proof_content'] = base64.b64encode(candidate_dict['id_proof_content']).decode('utf-8')
+            
+            processed_rows.append(candidate_dict)
+        
+        print(f"✓ Fetched {len(processed_rows)} approved candidates")
+        return jsonify({'success': True, 'data': processed_rows})
+    except Exception as e:
+        print(f"✗ Exception in /admin/api/get-approved-candidates: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/get-approved-file/<usn>', methods=['GET'])
+@login_required
+def admin_api_get_approved_file(usn):
+    """Get file for approved candidate (resume, id_proof, or project_document)"""
+    file_type = request.args.get('type', 'resume')
+    
+    if file_type not in ('resume', 'id_proof', 'project'):
+        return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+    
+    try:
+        # Query the approved candidate by USN
+        approved_candidate = ApprovedCandidate.query.filter_by(usn=usn).first()
+        
+        if not approved_candidate:
+            return jsonify({'success': False, 'error': 'Candidate not found'}), 404
+        
+        # Map file type to column
+        blob_map = {
+            'resume': 'resume_content',
+            'id_proof': 'id_proof_content',
+            'project': 'project_document_content',
+        }
+        
+        column_name = blob_map[file_type]
+        blob_content = getattr(approved_candidate, column_name, None)
+        
+        if not blob_content:
+            return jsonify({'success': False, 'error': f'No {file_type} available'}), 404
+        
+        # Encode BLOB to base64 for JSON transmission
+        if isinstance(blob_content, bytes):
+            file_data = base64.b64encode(blob_content).decode('utf-8')
+        else:
+            file_data = blob_content
+        
+        # Detect file type from magic bytes
+        if isinstance(blob_content, bytes):
+            data_bytes = blob_content
+        else:
+            data_bytes = base64.b64decode(file_data)
+        
+        detected_ext = 'bin'
+        if data_bytes.startswith(b'%PDF'):
+            detected_ext = 'pdf'
+        elif data_bytes.startswith(b'\xff\xd8'):
+            detected_ext = 'jpg'
+        elif data_bytes.startswith(b'\x89PNG'):
+            detected_ext = 'png'
+        elif data_bytes.startswith(b'PK\x03\x04'):
+            detected_ext = 'docx'
+        
+        return jsonify({
+            'success': True,
+            'file_data': file_data,
+            'file_type': file_type,
+            'file_name': f'{file_type}.{detected_ext}',
+            'mime_type': 'application/octet-stream'
+        })
+    except Exception as e:
+        print(f"✗ Exception in /admin/api/get-approved-file: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -589,6 +709,8 @@ def admin_accept(user_id):
     if not email:
         return jsonify({'success': False, 'error': 'Applicant email not found'}), 404
 
+    # details to include in accept email (populated for free internships)
+    details_for_email = None
     # Update status in DB (best-effort)
     try:
         conn = get_db()
@@ -800,7 +922,154 @@ def admin_accept(user_id):
         except Exception:
             pass
 
-    ok = send_accept_email(email, name or '')
+    # If this is a free internship, store the full applicant details in the approved_candidates table
+    elif internship_type == 'free':
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            free_table = get_resolved_table('free_internship')
+            
+            # Fetch full row from free internship table
+            row = None
+            try:
+                cursor.execute(f"SELECT * FROM {free_table} WHERE id = %s LIMIT 1", (user_id,))
+                row = cursor.fetchone()
+            except Exception:
+                alt_table = free_table + '_application' if not free_table.endswith('_application') else free_table.replace('_application', '')
+                try:
+                    cursor.execute(f"SELECT * FROM {alt_table} WHERE id = %s LIMIT 1", (user_id,))
+                    row = cursor.fetchone()
+                except Exception:
+                    row = None
+            
+            # If we have a row, try to fetch file BLOBs and filenames from free_document_store
+            resume_blob = None
+            project_blob = None
+            id_proof_blob = None
+            resume_name = None
+            project_document_name = None
+            id_proof_name = None
+            
+            if row:
+                try:
+                    # Try to fetch BLOBs and filename metadata from document store
+                    # Select both content and name columns if available. Some schemas use *_name or *_filename.
+                    cursor.execute(
+                        "SELECT resume_content, resume_name, project_document_content, project_document_name, id_proof_content, id_proof_name FROM free_document_store WHERE free_internship_application_id = %s LIMIT 1",
+                        (user_id,)
+                    )
+                    blob_row = cursor.fetchone()
+                    if blob_row:
+                        if isinstance(blob_row, dict):
+                            resume_blob = blob_row.get('resume_content')
+                            resume_name = blob_row.get('resume_name') or blob_row.get('resume_filename')
+                            project_blob = blob_row.get('project_document_content')
+                            project_document_name = blob_row.get('project_document_name') or blob_row.get('project_document_filename')
+                            id_proof_blob = blob_row.get('id_proof_content')
+                            id_proof_name = blob_row.get('id_proof_name') or blob_row.get('id_proof_filename')
+                        else:
+                            # tuple fallback: map by expected positions
+                            try:
+                                resume_blob = blob_row[0]
+                            except Exception:
+                                resume_blob = None
+                            try:
+                                resume_name = blob_row[1]
+                            except Exception:
+                                resume_name = None
+                            try:
+                                project_blob = blob_row[2]
+                            except Exception:
+                                project_blob = None
+                            try:
+                                project_document_name = blob_row[3]
+                            except Exception:
+                                project_document_name = None
+                            try:
+                                id_proof_blob = blob_row[4]
+                            except Exception:
+                                id_proof_blob = None
+                            try:
+                                id_proof_name = blob_row[5]
+                            except Exception:
+                                id_proof_name = None
+                except Exception:
+                    # If the schema doesn't have these columns, ignore and continue; names remain None
+                    pass
+            
+            cursor.close()
+            conn.close()
+            
+            # Create and insert ApprovedCandidate record using SQLAlchemy
+            if row:
+                try:
+                    # Map source columns to ApprovedCandidate fields
+                    row_map = {k.lower(): v for k, v in (row.items() if isinstance(row, dict) else [])}
+                    
+                    # Extract values with fallback logic
+                    def get_field(keys, default=None):
+                        for key in keys:
+                            if key.lower() in row_map:
+                                return row_map[key.lower()]
+                        return default
+                    
+                    # Check if already exists
+                    usn_val = get_field(['usn', 'roll', 'rollno'])
+                    if usn_val:
+                        existing = ApprovedCandidate.query.filter_by(usn=usn_val).first()
+                        if not existing:
+                            # Create new approved candidate
+                            approved_candidate = ApprovedCandidate(
+                                usn=usn_val,
+                                application_id=user_id,
+                                name=get_field(['name', 'full_name', 'applicant_name'], ''),
+                                email=get_field(['email', 'applicant_email'], ''),
+                                phone_number=get_field(['phone', 'mobile', 'phone_number', 'contact'], ''),
+                                year=get_field(['year', 'sem', 'semester', 'batch'], ''),
+                                qualification=get_field(['qualification', 'degree'], ''),
+                                branch=get_field(['branch', 'department', 'stream'], ''),
+                                college=get_field(['college', 'institution', 'institute'], ''),
+                                domain=get_field(['domain'], ''),
+                                mode_of_interview=get_field(['mode_of_interview', 'interview_mode'], 'online'),
+                                resume_name=resume_name,
+                                resume_content=resume_blob,
+                                project_document_name=project_document_name,
+                                project_document_content=project_blob,
+                                id_proof_name=id_proof_name,
+                                id_proof_content=id_proof_blob
+                            )
+                            
+                            db.session.add(approved_candidate)
+                            db.session.commit()
+                            # Prepare details for email (use human-friendly keys)
+                            details_for_email = {
+                                'application_id': row_map.get('application_id') or user_id,
+                                'usn': usn_val,
+                                'name': row_map.get('name') or row_map.get('full_name') or '',
+                                'email': row_map.get('email') or '',
+                                'phone': row_map.get('phone') or row_map.get('mobile') or row_map.get('phone_number') or '',
+                                'year': row_map.get('year') or '',
+                                'qualification': row_map.get('qualification') or '',
+                                'branch': row_map.get('branch') or '',
+                                'college': row_map.get('college') or '',
+                                'domain': row_map.get('domain') or '',
+                                'mode_of_interview': row_map.get('mode_of_interview') or row_map.get('interview_mode') or 'online'
+                            }
+                except Exception as e:
+                    app.logger.error(f"Error inserting approved candidate: {str(e)}")
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # If free internship, add report link to details_for_email
+    if internship_type == 'free':
+        if details_for_email is None:
+            details_for_email = {}
+        details_for_email['report_link'] = 'http://127.0.0.1:5000/report'
+    ok = send_accept_email(email, name or '', details=details_for_email)
     if ok:
         return jsonify({'success': True, 'message': 'Accept email sent'})
     else:

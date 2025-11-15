@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Approved Candidates - Swizosoft</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <div class="logo-icon">🎓</div>
+                <h1>Swizosoft</h1>
+            </div>
+            <div class="navbar-menu">
+                <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Dashboard</a>
+                <a href="{{ url_for('admin_selected') }}" class="nav-link">Selected Candidates</a>
+                <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link active">Approved Candidates</a>
+                <a href="{{ url_for('admin_job_description') }}" class="nav-link">Job Description</a>
+                <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-container full-width">
+        <div class="page-header">
+            <h2>Approved Candidates</h2>
+            <p>List of candidates approved for free internship</p>
+        </div>
+
+        <!-- Approved Candidates Section -->
+        <section class="internship-section">
+            <div class="section-header">
+                <div>
+                    <h3>Free Internship Approved Candidates</h3>
+                    <p>Total approved: <span class="count-badge" id="approved-count">0</span></p>
+                </div>
+            </div>
+            <div class="table-container" id="approvedGrid">
+                <div class="loading-card">
+                    <div class="spinner"></div>
+                    <p>Loading approved candidates...</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- File Viewer Modal -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="fileTitle">File Viewer</h3>
+                <div class="modal-actions">
+                    <a id="downloadBtn" class="modal-download-btn" style="display:none;">⬇️ Download</a>
+                    <button class="modal-close" onclick="closeFileModal()">✕</button>
+                </div>
+            </div>
+            <div id="fileViewerContainer">
+                <!-- File content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/admin_approved_candidates.js') }}"></script>
+</body>
+</html>
