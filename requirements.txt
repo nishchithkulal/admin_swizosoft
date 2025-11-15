@@ -12,3 +12,4 @@ python-dotenv==1.0.0
 
 # Image support (if you need image processing)
 Pillow==10.0.0
+Flask-Mail==0.9.1

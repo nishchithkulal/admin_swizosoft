@@ -136,20 +136,13 @@ function updateStatus(internshipId, status, internshipType) {
         return;
     }
     
-    fetch(`/admin/api/update-status/${internshipId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            status: status,
-            type: internshipType
-        })
-    })
+    // Call the accept/reject endpoints which also send emails
+    const endpoint = status === 'ACCEPTED' ? `/accept/${internshipId}?type=${internshipType}` : `/reject/${internshipId}?type=${internshipType}`;
+    fetch(endpoint, { method: 'POST' })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(`Application ${status.toLowerCase()}!`);
+            alert(data.message || `Application ${status.toLowerCase()}!`);
             // Refresh the table
             loadInternships(currentType);
         } else {

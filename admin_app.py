@@ -13,6 +13,20 @@ app = Flask(__name__)
 from config import get_config
 app.config.from_object(get_config())
 
+# SMTP / Mail settings (explicitly load per user request)
+app.config.update({
+    'MAIL_SERVER': 'smtp.hostinger.com',
+    'MAIL_PORT': 465,
+    'MAIL_USE_SSL': True,
+    'MAIL_USERNAME': 'no-reply2@swizosoft.in',
+    'MAIL_PASSWORD': 'NOREPLY2@Swizosoft@123...',
+    'MAIL_DEFAULT_SENDER': 'no-reply2@swizosoft.in',
+})
+
+# Initialize mail (admin_email_sender provides the Mail() instance)
+from admin_email_sender import mail, send_accept_email, send_reject_email
+mail.init_app(app)
+
 # Files uploaded path (change via env or config if needed)
 UPLOAD_FOLDER = app.config.get('UPLOAD_FOLDER', 'uploads')
 # Lightweight health endpoint so the server can be validated without DB access
@@ -277,6 +291,163 @@ def admin_update_status(internship_id):
             return jsonify({'success': True, 'message': f'Status updated to {status}'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+def _fetch_applicant_contact(internship_id, internship_type='free'):
+    """Return (email, name) for given application id and type or (None, None)."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+
+        # Discover columns in the actual table
+        try:
+            cursor.execute("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema=%s AND table_name=%s ORDER BY ORDINAL_POSITION", (app.config.get('MYSQL_DB'), table))
+            cols = [r['COLUMN_NAME'] for r in cursor.fetchall()]
+        except Exception:
+            cols = []
+
+        # Map lowercase -> actual name for case-insensitive lookup
+        lower_map = {c.lower(): c for c in cols}
+
+        email_col = None
+        name_col = None
+        for candidate in ('email', 'applicant_email', 'email_address', 'emailid', 'mail'):
+            if candidate in lower_map:
+                email_col = lower_map[candidate]
+                break
+        for candidate in ('name', 'full_name', 'applicant_name', 'student_name'):
+            if candidate in lower_map:
+                name_col = lower_map[candidate]
+                break
+
+        # Fallback to any column containing 'email' or 'name'
+        if not email_col:
+            for c in cols:
+                if 'email' in c.lower():
+                    email_col = c
+                    break
+        if not name_col:
+            for c in cols:
+                if 'name' in c.lower() and 'email' not in c.lower():
+                    name_col = c
+                    break
+
+        if not email_col and not name_col:
+            return (None, None)
+
+        sel_cols = []
+        if email_col:
+            sel_cols.append(email_col)
+        if name_col:
+            sel_cols.append(name_col)
+
+        # Build and execute select
+        try:
+            query = f"SELECT {', '.join(sel_cols)} FROM {table} WHERE id = %s"
+            cursor.execute(query, (internship_id,))
+            row = cursor.fetchone()
+        except Exception:
+            # Try alternate table name
+            alt_table = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            try:
+                query = f"SELECT {', '.join(sel_cols)} FROM {alt_table} WHERE id = %s"
+                cursor.execute(query, (internship_id,))
+                row = cursor.fetchone()
+            except Exception:
+                row = None
+
+        if not row:
+            return (None, None)
+
+        email = None
+        name = None
+        if email_col:
+            email = row.get(email_col)
+        if name_col:
+            name = row.get(name_col)
+
+        return (email, name)
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+@app.route('/accept/<int:user_id>', methods=['POST'])
+@login_required
+def admin_accept(user_id):
+    internship_type = request.args.get('type', 'free')
+    email, name = _fetch_applicant_contact(user_id, internship_type)
+    if not email:
+        return jsonify({'success': False, 'error': 'Applicant email not found'}), 404
+
+    # Update status in DB (best-effort)
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+        try:
+            cursor.execute(f"UPDATE {table} SET status = %s WHERE id = %s", ('ACCEPTED', user_id))
+            conn.commit()
+        except Exception:
+            alt = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            try:
+                cursor.execute(f"UPDATE {alt} SET status = %s WHERE id = %s", ('ACCEPTED', user_id))
+                conn.commit()
+            except Exception:
+                pass
+        cursor.close()
+        conn.close()
+    except Exception:
+        pass
+
+    ok = send_accept_email(email, name or '')
+    if ok:
+        return jsonify({'success': True, 'message': 'Accept email sent'})
+    else:
+        return jsonify({'success': False, 'error': 'Failed to send email'}), 500
+
+@app.route('/reject/<int:user_id>', methods=['POST'])
+@login_required
+def admin_reject(user_id):
+    internship_type = request.args.get('type', 'free')
+    email, name = _fetch_applicant_contact(user_id, internship_type)
+    if not email:
+        return jsonify({'success': False, 'error': 'Applicant email not found'}), 404
+
+    # Update status in DB (best-effort)
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+        try:
+            cursor.execute(f"UPDATE {table} SET status = %s WHERE id = %s", ('REJECTED', user_id))
+            conn.commit()
+        except Exception:
+            alt = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            try:
+                cursor.execute(f"UPDATE {alt} SET status = %s WHERE id = %s", ('REJECTED', user_id))
+                conn.commit()
+            except Exception:
+                pass
+        cursor.close()
+        conn.close()
+    except Exception:
+        pass
+
+    ok = send_reject_email(email, name or '')
+    if ok:
+        return jsonify({'success': True, 'message': 'Rejection email sent'})
+    else:
+        return jsonify({'success': False, 'error': 'Failed to send email'}), 500
 
 
 @app.route('/admin/api/get-payment-screenshots/<int:internship_id>')
