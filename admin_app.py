@@ -1077,12 +1077,15 @@ def admin_accept(user_id):
         except Exception:
             pass
 
-    # If free internship, add report link to details_for_email
+    # If free internship, add interview scheduler link (but do not include report_link in email)
+    interview_link = None
     if internship_type == 'free':
         if details_for_email is None:
             details_for_email = {}
-        details_for_email['report_link'] = 'http://127.0.0.1:5000/report'
-    ok = send_accept_email(email, name or '', details=details_for_email)
+        # NOTE: intentionally do NOT add a `report_link` into `details_for_email` to avoid showing it in the email
+        interview_link = 'http://127.0.0.1:5000/interview-scheduler'
+
+    ok = send_accept_email(email, name or '', details=details_for_email, interview_link=interview_link)
     if ok:
         return jsonify({'success': True, 'message': 'Accept email sent'})
     else:
