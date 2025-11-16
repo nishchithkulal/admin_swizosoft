@@ -46,6 +46,8 @@ class ApprovedCandidate(db.Model):
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Cached job description snapshot for the candidate's domain (optional)
+    job_description = db.Column(db.Text, nullable=True)
     
     def __repr__(self):
         return f'<ApprovedCandidate {self.usn} - {self.name}>'
@@ -71,6 +73,7 @@ class ApprovedCandidate(db.Model):
             'project_document_content': self.project_document_content,
             'id_proof_name': self.id_proof_name,
             'id_proof_content': self.id_proof_content,
+            'job_description': self.job_description,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

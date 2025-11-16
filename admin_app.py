@@ -4,7 +4,6 @@ import pymysql
 import pymysql.cursors
 import io
 from functools import wraps
-import admin_app
 import json
 import base64
 
@@ -73,6 +72,26 @@ def get_db():
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor,
     )
+
+
+# Best-effort: ensure `approved_candidates.job_description` column exists before ORM queries run.
+try:
+    conn_check = get_db()
+    cur_check = conn_check.cursor()
+    cur_check.execute("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema=%s AND table_name=%s", (app.config.get('MYSQL_DB'), 'approved_candidates'))
+    existing = [r['COLUMN_NAME'] for r in cur_check.fetchall()]
+    if 'job_description' not in existing:
+        try:
+            cur_check.execute("ALTER TABLE approved_candidates ADD COLUMN job_description TEXT")
+            conn_check.commit()
+            print('Ensured approved_candidates.job_description column (added)')
+        except Exception as e:
+            # Older MySQL versions or permission issues may fail; log and continue
+            print('Could not add approved_candidates.job_description at import-time:', e)
+    cur_check.close()
+    conn_check.close()
+except Exception:
+    pass
 
 # Admin credentials from config
 ADMIN_USERNAME = app.config.get('ADMIN_USERNAME', 'admin')
@@ -1830,106 +1849,131 @@ def admin_serve_file_inplace(internship_id, file_type):
 @app.route('/admin/job-description', methods=['GET', 'POST'])
 @login_required
 def admin_job_description():
-    """Page to view/edit/delete/add the job description stored in the database.
-       The code will create a small table `job_description` if it does not exist and
-       store a single row with id=1.
+    """Manage multiple job descriptions keyed by domain.
+       Provides list view (GET) and actions (POST) to add/update/delete by id or domain.
     """
-    # Work with DB but tolerate missing table or permissions. Provide user-friendly page.
     conn = None
     cursor = None
-    description = ''
+    rows = []
     try:
         conn = get_db()
         cursor = conn.cursor()
 
-        # Try to ensure table exists, but ignore errors (some hosts may not allow CREATE)
+        # Ensure the table exists with a sensible schema (best-effort)
         try:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS job_description (
-                    id INT PRIMARY KEY,
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    domain VARCHAR(255),
                     description TEXT
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )
             conn.commit()
         except Exception:
-            # Log but continue; we'll handle missing table below
-            print('Warning: could not create job_description table (may lack permissions)')
-
-        # Discover columns in the existing table (if any)
-        try:
-            cursor.execute("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema=%s AND table_name=%s ORDER BY ORDINAL_POSITION", (app.config.get('MYSQL_DB'), 'job_description'))
-            cols = [r['COLUMN_NAME'] for r in cursor.fetchall()]
-        except Exception:
-            cols = []
-
-        # pick a sensible description column if present
-        desc_col = None
-        if cols:
-            for candidate in ('description', 'job_description', 'jd', 'text', 'desc'):
-                if candidate in cols:
-                    desc_col = candidate
-                    break
-            if not desc_col:
-                for c in cols:
-                    if c.lower() != 'id':
-                        desc_col = c
-                        break
+            # ignore, we'll try to work with whatever schema exists
+            print('Warning: could not ensure job_description schema')
 
         if request.method == 'POST':
             action = request.form.get('action')
+            domain = (request.form.get('domain') or '').strip()
             desc = request.form.get('description', '').strip()
+            row_id = request.form.get('id')
             try:
-                if not cols:
-                    # Try to create default table if it didn't exist
-                    try:
-                        cursor.execute("CREATE TABLE IF NOT EXISTS job_description (id INT PRIMARY KEY, description TEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
-                        conn.commit()
-                        desc_col = 'description'
-                        cols = ['id', 'description']
-                    except Exception:
-                        pass
-
-                if desc_col == 'description' and 'id' in [c.lower() for c in cols]:
-                    # id+description schema
-                    cursor.execute("SELECT id FROM job_description WHERE id = 1")
-                    if cursor.fetchone():
-                        if action in ('save', 'add'):
-                            cursor.execute("UPDATE job_description SET description = %s WHERE id = 1", (desc,))
-                        elif action == 'delete':
-                            cursor.execute("DELETE FROM job_description WHERE id = 1")
+                if action == 'add':
+                    if domain:
+                        cursor.execute("INSERT INTO job_description (domain, description) VALUES (%s, %s)", (domain, desc))
                     else:
-                        if action in ('save', 'add'):
-                            cursor.execute("INSERT INTO job_description (id, description) VALUES (1, %s)", (desc,))
-                    conn.commit()
-                else:
-                    # single-column or unknown schema: update or insert into the detected column
-                    if not desc_col and cols:
-                        desc_col = cols[0]
-                    if desc_col:
-                        cursor.execute("SELECT COUNT(*) as cnt FROM job_description")
-                        cnt = cursor.fetchone().get('cnt', 0)
-                        if action == 'delete':
-                            cursor.execute("DELETE FROM job_description")
-                        elif cnt == 0:
-                            cursor.execute(f"INSERT INTO job_description ({desc_col}) VALUES (%s)", (desc,))
+                        cursor.execute("INSERT INTO job_description (description) VALUES (%s)", (desc,))
+                elif action in ('save', 'update'):
+                    if row_id:
+                        cursor.execute("UPDATE job_description SET domain=%s, description=%s WHERE id=%s", (domain or None, desc, int(row_id)))
+                    elif domain:
+                        cursor.execute("UPDATE job_description SET description=%s WHERE domain=%s", (desc, domain))
+                elif action == 'delete':
+                    if row_id:
+                        cursor.execute("DELETE FROM job_description WHERE id=%s", (int(row_id),))
+                    elif domain:
+                        cursor.execute("DELETE FROM job_description WHERE domain=%s", (domain,))
+                conn.commit()
+
+                # Propagate job description change into approved_candidates.job_description
+                try:
+                    # Ensure approved_candidates has job_description column (best-effort)
+                    try:
+                        cursor.execute("ALTER TABLE approved_candidates ADD COLUMN IF NOT EXISTS job_description TEXT")
+                    except Exception:
+                        # some MySQL versions don't support IF NOT EXISTS for ALTER; try without IF NOT EXISTS
+                        try:
+                            cursor.execute("ALTER TABLE approved_candidates ADD COLUMN job_description TEXT")
+                        except Exception:
+                            pass
+
+                    # Update candidate records for this domain
+                    if action in ('add', 'save', 'update'):
+                        if domain:
+                            cursor.execute("UPDATE approved_candidates SET job_description=%s WHERE domain=%s", (desc, domain))
                         else:
-                            cursor.execute(f"UPDATE job_description SET {desc_col} = %s", (desc,))
-                        conn.commit()
+                            # no domain provided: set for all rows
+                            cursor.execute("UPDATE approved_candidates SET job_description=%s", (desc,))
+                    elif action == 'delete':
+                        if domain:
+                            cursor.execute("UPDATE approved_candidates SET job_description = NULL WHERE domain=%s", (domain,))
+                        else:
+                            cursor.execute("UPDATE approved_candidates SET job_description = NULL")
+                    conn.commit()
+                except Exception as e:
+                    print('Warning: could not propagate job_description to approved_candidates:', e)
             except Exception as e:
                 print('DB write error in admin_job_description:', e)
             return redirect(url_for('admin_job_description'))
 
-        # GET: read the description using detected column
-        if cols and desc_col:
-            try:
-                cursor.execute(f"SELECT {desc_col} FROM job_description LIMIT 1")
-                row = cursor.fetchone()
-                if row and row.get(desc_col):
-                    description = row.get(desc_col)
-            except Exception:
-                pass
+        # GET: fetch all rows
+        try:
+                # Introspect job_description table columns to support legacy schemas
+                try:
+                    cursor.execute("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema=%s AND table_name=%s ORDER BY ORDINAL_POSITION", (app.config.get('MYSQL_DB'), 'job_description'))
+                    jd_cols = [r['COLUMN_NAME'] for r in cursor.fetchall()]
+                except Exception:
+                    jd_cols = []
+
+                rows = []
+                if jd_cols and set(['id', 'domain', 'description']).issubset(set(jd_cols)):
+                    cursor.execute("SELECT id, domain, description FROM job_description ORDER BY domain IS NULL, domain ASC, id ASC")
+                    rows = cursor.fetchall()
+                else:
+                    # fallback: try to read as many columns as possible
+                    try:
+                        cursor.execute("SELECT * FROM job_description")
+                        raw = cursor.fetchall()
+                        # normalize rows to have id/domain/description keys
+                        for i, r in enumerate(raw):
+                            # r may be dict or tuple depending on cursor
+                            if isinstance(r, dict):
+                                # find description-like column
+                                desc = None
+                                domain = None
+                                rid = r.get('id') or r.get('ID') or None
+                                for c in ('description', 'job_description', 'jd', 'text', 'desc'):
+                                    if c in r and r.get(c):
+                                        desc = r.get(c)
+                                        break
+                                # attempt domain column
+                                for c in ('domain', 'name'):
+                                    if c in r and r.get(c):
+                                        domain = r.get(c)
+                                        break
+                                rows.append({'id': rid or (i+1), 'domain': domain, 'description': desc})
+                            else:
+                                # tuple-like row; map first text column as description
+                                rows.append({'id': i+1, 'domain': None, 'description': str(r)})
+                    except Exception as e:
+                        print('DB read error in admin_job_description (fallback):', e)
+                        rows = []
+        except Exception as e:
+            print('DB read error in admin_job_description:', e)
+            rows = []
 
     finally:
         if cursor:
@@ -1943,14 +1987,14 @@ def admin_job_description():
             except Exception:
                 pass
 
-    return render_template('admin_job_description.html', description=description)
+    return render_template('admin_job_description.html', rows=rows)
 
 
 # Check what table name is resolved
-conn = admin_app.get_db()
+conn = get_db()
 cur = conn.cursor()
 
-table = admin_app.get_resolved_table('free_internship')
+table = get_resolved_table('free_internship')
 print(f"Using table: {table}")
 
 # Get a sample row with all file columns
@@ -1969,6 +2013,40 @@ if __name__ == '__main__':
         app.secret_key = app.config.get('SECRET_KEY') or 'dev-secret-change-me'
     # Diagnostic prints to help debugging when the process exits immediately
     try:
+        @app.before_first_request
+        def ensure_approved_candidates_job_description_column():
+            """Best-effort: ensure `approved_candidates.job_description` exists so SQLAlchemy queries don't fail.
+               Runs once before the first request. Non-fatal on error.
+            """
+            conn = None
+            cur = None
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                db_name = app.config.get('MYSQL_DB')
+                cur.execute("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema=%s AND table_name=%s", (db_name, 'approved_candidates'))
+                cols = [r['COLUMN_NAME'] for r in cur.fetchall()]
+                if 'job_description' not in cols:
+                    try:
+                        cur.execute("ALTER TABLE approved_candidates ADD COLUMN job_description TEXT")
+                        conn.commit()
+                        print('Added approved_candidates.job_description column')
+                    except Exception as e:
+                        # If ALTER fails, log and continue; the app will handle missing column gracefully later
+                        print('Could not add approved_candidates.job_description column:', e)
+            except Exception as e:
+                print('Error during schema ensure step:', e)
+            finally:
+                try:
+                    if cur:
+                        cur.close()
+                except Exception:
+                    pass
+                try:
+                    if conn:
+                        conn.close()
+                except Exception:
+                    pass
         import sys, platform, os
         print('Starting admin_app.py', file=sys.stderr)
         print('Python executable:', sys.executable, file=sys.stderr)
