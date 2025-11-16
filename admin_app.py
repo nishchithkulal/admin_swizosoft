@@ -33,6 +33,13 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
     f"mysql+pymysql://{app.config.get('MYSQL_USER')}:{encoded_pw}@{app.config.get('MYSQL_HOST')}/{app.config.get('MYSQL_DB')}?charset=utf8mb4"
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Add connection pooling with better timeout handling
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'pool_recycle': 3600,  # Recycle connections every hour
+    'pool_pre_ping': True,  # Test connections before using them
+    'connect_args': {'connect_timeout': 10}
+}
 db.init_app(app)
 
 # SMTP / Mail settings (explicitly load per user request)
@@ -263,30 +270,45 @@ def admin_api_get_selected():
 @login_required
 def admin_api_get_approved_candidates():
     """Fetch all approved candidates from approved_candidates table using SQLAlchemy ORM"""
-    try:
-        # Query all approved candidates ordered by created_at descending
-        approved_candidates = ApprovedCandidate.query.order_by(ApprovedCandidate.created_at.desc()).all()
-        
-        # Convert to list of dictionaries
-        processed_rows = []
-        for candidate in approved_candidates:
-            candidate_dict = candidate.to_dict()
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Query all approved candidates ordered by created_at descending
+            approved_candidates = ApprovedCandidate.query.order_by(ApprovedCandidate.created_at.desc()).all()
             
-            # Convert BLOB fields to base64 for JSON serialization
-            if candidate_dict.get('resume_content') and isinstance(candidate_dict['resume_content'], bytes):
-                candidate_dict['resume_content'] = base64.b64encode(candidate_dict['resume_content']).decode('utf-8')
-            if candidate_dict.get('project_document_content') and isinstance(candidate_dict['project_document_content'], bytes):
-                candidate_dict['project_document_content'] = base64.b64encode(candidate_dict['project_document_content']).decode('utf-8')
-            if candidate_dict.get('id_proof_content') and isinstance(candidate_dict['id_proof_content'], bytes):
-                candidate_dict['id_proof_content'] = base64.b64encode(candidate_dict['id_proof_content']).decode('utf-8')
+            # Convert to list of dictionaries
+            processed_rows = []
+            for candidate in approved_candidates:
+                candidate_dict = candidate.to_dict()
+                
+                # Convert BLOB fields to base64 for JSON serialization
+                if candidate_dict.get('resume_content') and isinstance(candidate_dict['resume_content'], bytes):
+                    candidate_dict['resume_content'] = base64.b64encode(candidate_dict['resume_content']).decode('utf-8')
+                if candidate_dict.get('project_document_content') and isinstance(candidate_dict['project_document_content'], bytes):
+                    candidate_dict['project_document_content'] = base64.b64encode(candidate_dict['project_document_content']).decode('utf-8')
+                if candidate_dict.get('id_proof_content') and isinstance(candidate_dict['id_proof_content'], bytes):
+                    candidate_dict['id_proof_content'] = base64.b64encode(candidate_dict['id_proof_content']).decode('utf-8')
+                
+                processed_rows.append(candidate_dict)
             
-            processed_rows.append(candidate_dict)
-        
-        print(f"✓ Fetched {len(processed_rows)} approved candidates")
-        return jsonify({'success': True, 'data': processed_rows})
-    except Exception as e:
-        print(f"✗ Exception in /admin/api/get-approved-candidates: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+            print(f"✓ Fetched {len(processed_rows)} approved candidates")
+            return jsonify({'success': True, 'data': processed_rows})
+        except Exception as e:
+            retry_count += 1
+            print(f"✗ Exception in /admin/api/get-approved-candidates (attempt {retry_count}/{max_retries}): {str(e)[:100]}")
+            
+            if retry_count < max_retries:
+                # Try to reset the connection and retry
+                try:
+                    db.session.remove()
+                    db.session.close()
+                except Exception:
+                    pass
+            else:
+                # All retries exhausted
+                return jsonify({'success': False, 'error': 'Database connection error. Please refresh the page.'}), 500
 
 
 @app.route('/admin/api/get-approved-file/<usn>', methods=['GET'])
@@ -942,7 +964,8 @@ def admin_accept(user_id):
                 except Exception:
                     row = None
             
-            # If we have a row, try to fetch file BLOBs and filenames from free_document_store
+            # If we have a row, try to fetch file BLOBs from free_document_store
+            # Filenames come from the free_internship_application row
             resume_blob = None
             project_blob = None
             id_proof_blob = None
@@ -951,51 +974,41 @@ def admin_accept(user_id):
             id_proof_name = None
             
             if row:
+                # First, get filenames from the application row itself
+                row_map = {k.lower(): v for k, v in (row.items() if isinstance(row, dict) else [])}
+                resume_name = row_map.get('resume')
+                project_document_name = row_map.get('project_document')
+                id_proof_name = row_map.get('id_proof')
+                
+                # Now fetch BLOB content from free_document_store
                 try:
-                    # Try to fetch BLOBs and filename metadata from document store
-                    # Select both content and name columns if available. Some schemas use *_name or *_filename.
                     cursor.execute(
-                        "SELECT resume_content, resume_name, project_document_content, project_document_name, id_proof_content, id_proof_name FROM free_document_store WHERE free_internship_application_id = %s LIMIT 1",
+                        "SELECT resume_content, project_document_content, id_proof_content FROM free_document_store WHERE free_internship_application_id = %s LIMIT 1",
                         (user_id,)
                     )
                     blob_row = cursor.fetchone()
                     if blob_row:
                         if isinstance(blob_row, dict):
                             resume_blob = blob_row.get('resume_content')
-                            resume_name = blob_row.get('resume_name') or blob_row.get('resume_filename')
                             project_blob = blob_row.get('project_document_content')
-                            project_document_name = blob_row.get('project_document_name') or blob_row.get('project_document_filename')
                             id_proof_blob = blob_row.get('id_proof_content')
-                            id_proof_name = blob_row.get('id_proof_name') or blob_row.get('id_proof_filename')
                         else:
-                            # tuple fallback: map by expected positions
+                            # tuple fallback: map by position
                             try:
                                 resume_blob = blob_row[0]
                             except Exception:
                                 resume_blob = None
                             try:
-                                resume_name = blob_row[1]
-                            except Exception:
-                                resume_name = None
-                            try:
-                                project_blob = blob_row[2]
+                                project_blob = blob_row[1]
                             except Exception:
                                 project_blob = None
                             try:
-                                project_document_name = blob_row[3]
-                            except Exception:
-                                project_document_name = None
-                            try:
-                                id_proof_blob = blob_row[4]
+                                id_proof_blob = blob_row[2]
                             except Exception:
                                 id_proof_blob = None
-                            try:
-                                id_proof_name = blob_row[5]
-                            except Exception:
-                                id_proof_name = None
-                except Exception:
-                    # If the schema doesn't have these columns, ignore and continue; names remain None
-                    pass
+                except Exception as e:
+                    # If query fails, continue with None values
+                    app.logger.warning(f"Could not fetch document BLOBs: {e}")
             
             cursor.close()
             conn.close()
@@ -1079,6 +1092,8 @@ def admin_accept(user_id):
 @login_required
 def admin_reject(user_id):
     internship_type = request.args.get('type', 'free')
+    reason = request.form.get('reason', '') or request.get_json().get('reason', '') if request.is_json else request.form.get('reason', '')
+    
     email, name = _fetch_applicant_contact(user_id, internship_type)
     if not email:
         return jsonify({'success': False, 'error': 'Applicant email not found'}), 404
@@ -1103,11 +1118,35 @@ def admin_reject(user_id):
     except Exception:
         pass
 
-    ok = send_reject_email(email, name or '')
+    ok = send_reject_email(email, name or '', reason)
     if ok:
         return jsonify({'success': True, 'message': 'Rejection email sent'})
     else:
         return jsonify({'success': False, 'error': 'Failed to send email'}), 500
+
+
+@app.route('/admin/api/get-rejection-reasons')
+@login_required
+def admin_api_get_rejection_reasons():
+    """Get list of rejection reasons"""
+    reasons = [
+        'Does not meet minimum qualifications',
+        'Lack of relevant experience',
+        'Poor communication skills',
+        'Scheduling conflict',
+        'Position filled',
+        'Insufficient knowledge in required technologies',
+        'Cultural fit concerns',
+        'Limited availability',
+        'Application incomplete',
+        'Better candidates available',
+        'Technical assessment score below threshold',
+        'Interview performance unsatisfactory',
+        'Not meeting location requirements',
+        'Salary expectations mismatch',
+        'Background check issues'
+    ]
+    return jsonify({'success': True, 'reasons': reasons})
 
 
 @app.route('/admin/api/get-payment-screenshots/<int:internship_id>')

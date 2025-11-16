@@ -62,6 +62,22 @@
         </div>
     </div>
 
+    <!-- Rejection Modal -->
+    <div id="approvedRejectionModal" class="rejection-modal">
+        <div class="rejection-modal-content">
+            <div class="rejection-modal-header">
+                <h3>Select Rejection Reason</h3>
+                <span class="rejection-modal-close" onclick="closeApprovedRejectionModal()">&times;</span>
+            </div>
+            <div id="approvedRejectionReasonsList" class="rejection-reasons-list">
+                <p>Loading reasons...</p>
+            </div>
+            <div class="rejection-modal-footer">
+                <button onclick="closeApprovedRejectionModal()" class="file-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/admin_approved_candidates.js') }}"></script>
 </body>
 </html>

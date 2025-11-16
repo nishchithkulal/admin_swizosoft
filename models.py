@@ -30,17 +30,17 @@ class ApprovedCandidate(db.Model):
     mode_of_interview = db.Column(db.String(20), default='online')
     
     # Resume
-    resume_name = db.Column(db.String(255),nullable=False)
+    resume_name = db.Column(db.String(255), nullable=True)
     # Use MEDIUMBLOB for larger files
-    resume_content = db.Column(db.LargeBinary(length=16777215),nullable=False)  # MEDIUMBLOB max size
+    resume_content = db.Column(db.LargeBinary(length=16777215), nullable=True)  # MEDIUMBLOB max size
     
     # Project document
-    project_document_name = db.Column(db.String(255),nullable=False)
-    project_document_content = db.Column(db.LargeBinary(length=16777215),nullable=False)
+    project_document_name = db.Column(db.String(255), nullable=True)
+    project_document_content = db.Column(db.LargeBinary(length=16777215), nullable=True)
     
     # ID proof
-    id_proof_name = db.Column(db.String(255),nullable=False)
-    id_proof_content = db.Column(db.LargeBinary(length=16777215),nullable=False)
+    id_proof_name = db.Column(db.String(255), nullable=True)
+    id_proof_content = db.Column(db.LargeBinary(length=16777215), nullable=True)
     
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -64,8 +64,11 @@ class ApprovedCandidate(db.Model):
             'domain': self.domain,
             'mode_of_interview': self.mode_of_interview,
             'resume_name': self.resume_name,
+            'resume_content': self.resume_content,
             'project_document_name': self.project_document_name,
+            'project_document_content': self.project_document_content,
             'id_proof_name': self.id_proof_name,
+            'id_proof_content': self.id_proof_content,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -88,6 +88,22 @@
         </div>
     </div>
 
+    <!-- Rejection Modal -->
+    <div id="rejectionModal" class="rejection-modal">
+        <div class="rejection-modal-content">
+            <div class="rejection-modal-header">
+                <h3>Select Rejection Reason</h3>
+                <span class="rejection-modal-close" onclick="closeRejectionModal()">&times;</span>
+            </div>
+            <div id="rejectionReasonsList" class="rejection-reasons-list">
+                <p>Loading reasons...</p>
+            </div>
+            <div class="rejection-modal-footer">
+                <button onclick="closeRejectionModal()" class="file-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
 </body>
 </html>

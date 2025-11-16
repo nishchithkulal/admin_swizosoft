@@ -7,17 +7,7 @@ function loadApprovedCandidates() {
     const grid = document.getElementById('approvedGrid');
     const countElem = document.getElementById('approved-count');
     
-    fetch('/admin/api/get-approved-candidates', {
-        method: 'GET',
-        credentials: 'include',  // Include session cookies
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-        .then(r => {
-            console.log('Response status:', r.status);
-            return r.json();
-        })
+    fetchWithRetry('/admin/api/get-approved-candidates', 5)
         .then(resp => {
             console.log('Response data:', resp);
             if (resp.success) {
@@ -32,6 +22,39 @@ function loadApprovedCandidates() {
             grid.innerHTML = `<div class="empty-card"><div class="empty-card-icon">⚠️</div><p>Could not fetch approved candidates: ${err.message}</p></div>`;
             countElem.textContent = '0';
         });
+}
+
+// Retry function with exponential backoff
+async function fetchWithRetry(url, retries = 5, delay = 100) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                return await response.json();
+            } else if (response.status === 500 && i < retries - 1) {
+                // Server error, retry after delay
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay = Math.min(delay * 1.5, 1000);  // Exponential backoff, max 1s
+                continue;
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (err) {
+            if (i === retries - 1) {
+                throw err;
+            }
+            // Wait before retrying with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay = Math.min(delay * 1.5, 1000);  // Exponential backoff, max 1s
+        }
+    }
 }
 
 function renderApprovedCandidates(container, countElem, rows) {
@@ -69,6 +92,7 @@ function renderApprovedCandidates(container, countElem, rows) {
             <th>View Resume</th>
             <th>View ID Proof</th>
             <th>View Project</th>
+            <th>Actions</th>
         </tr>
     `;
     table.appendChild(thead);
@@ -95,6 +119,8 @@ function renderApprovedCandidates(container, countElem, rows) {
         const resumeBtn = r.resume_name ? `<button class="table-action-btn table-view-btn" onclick="viewApprovedFile('${usn}', 'resume')">View Resume</button>` : '—';
         const idProofBtn = r.id_proof_name ? `<button class="table-action-btn table-view-btn" onclick="viewApprovedFile('${usn}', 'id_proof')">View ID Proof</button>` : '—';
         const projectBtn = r.project_document_name ? `<button class="table-action-btn table-view-btn" onclick="viewApprovedFile('${usn}', 'project')">View Project</button>` : '—';
+        const acceptBtn = `<button class="table-action-btn table-accept-btn" onclick="confirmApprovedAccept(${appId})">Accept</button>`;
+        const rejectBtn = `<button class="table-action-btn table-reject-btn" onclick="showApprovedRejectionModal(${appId})">Reject</button>`;
 
         tr.innerHTML = `
             <td class="table-name">${name}</td>
@@ -109,6 +135,7 @@ function renderApprovedCandidates(container, countElem, rows) {
             <td>${resumeBtn}</td>
             <td>${idProofBtn}</td>
             <td>${projectBtn}</td>
+            <td>${acceptBtn} ${rejectBtn}</td>
         `;
         
         tbody.appendChild(tr);
@@ -213,7 +240,90 @@ function getMimeType(type) {
 // Close modal on background click
 window.onclick = function(event) {
     const modal = document.getElementById('fileModal');
+    const rejectionModal = document.getElementById('approvedRejectionModal');
+    
     if (event.target === modal) {
         closeFileModal();
     }
+    if (event.target === rejectionModal) {
+        closeApprovedRejectionModal();
+    }
 };
+
+// Rejection modal for approved candidates
+let currentApprovedRejectId = null;
+
+function showApprovedRejectionModal(applicationId) {
+    currentApprovedRejectId = applicationId;
+    
+    // Fetch rejection reasons
+    fetch('/admin/api/get-rejection-reasons')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const reasonsList = document.getElementById('approvedRejectionReasonsList');
+                reasonsList.innerHTML = '';
+                
+                data.reasons.forEach(reason => {
+                    const div = document.createElement('div');
+                    div.className = 'rejection-reason-item';
+                    div.textContent = reason;
+                    div.onclick = () => confirmApprovedReject(reason);
+                    reasonsList.appendChild(div);
+                });
+                
+                document.getElementById('approvedRejectionModal').style.display = 'flex';
+            }
+        })
+        .catch(err => console.error('Error fetching reasons:', err));
+}
+
+function closeApprovedRejectionModal() {
+    document.getElementById('approvedRejectionModal').style.display = 'none';
+    currentApprovedRejectId = null;
+}
+
+function confirmApprovedReject(reason) {
+    if (!currentApprovedRejectId) return;
+    
+    const formData = new FormData();
+    formData.append('reason', reason);
+    
+    fetch(`/reject/${currentApprovedRejectId}?type=free`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || 'Candidate rejected!');
+            closeApprovedRejectionModal();
+            loadApprovedCandidates();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error rejecting candidate');
+    });
+}
+
+function confirmApprovedAccept(applicationId) {
+    fetch(`/accept/${applicationId}?type=free`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || 'Candidate accepted!');
+            loadApprovedCandidates();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error accepting candidate');
+    });
+}

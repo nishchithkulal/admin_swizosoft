@@ -139,10 +139,15 @@ function showError(type, message) {
 }
 
 function updateStatus(internshipId, status, internshipType) {
-    if (!confirm(`Are you sure you want to mark this application as ${status}?`)) {
+    if (status === 'REJECTED') {
+        // Show rejection modal instead of confirm dialog
+        showRejectionModal(internshipId, internshipType);
         return;
     }
     
+    if (!confirm(`Are you sure you want to mark this application as ${status}?`)) {
+        return;
+    }
     // Call the accept/reject endpoints which also send emails
     const endpoint = status === 'ACCEPTED' ? `/accept/${internshipId}?type=${internshipType}` : `/reject/${internshipId}?type=${internshipType}`;
     fetch(endpoint, { method: 'POST' })
@@ -464,6 +469,68 @@ function saveProfile(internshipId, internshipType) {
     .catch(error => {
         console.error('Error:', error);
         alert('Error saving profile');
+    });
+}
+
+// Rejection modal functions
+let currentRejectInternshipId = null;
+let currentRejectInternshipType = null;
+
+function showRejectionModal(internshipId, internshipType) {
+    currentRejectInternshipId = internshipId;
+    currentRejectInternshipType = internshipType;
+    
+    // Fetch rejection reasons
+    fetch('/admin/api/get-rejection-reasons')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const reasonsList = document.getElementById('rejectionReasonsList');
+                reasonsList.innerHTML = '';
+                
+                data.reasons.forEach(reason => {
+                    const div = document.createElement('div');
+                    div.className = 'rejection-reason-item';
+                    div.textContent = reason;
+                    div.onclick = () => confirmReject(reason);
+                    reasonsList.appendChild(div);
+                });
+                
+                document.getElementById('rejectionModal').style.display = 'flex';
+            }
+        })
+        .catch(err => console.error('Error fetching reasons:', err));
+}
+
+function closeRejectionModal() {
+    document.getElementById('rejectionModal').style.display = 'none';
+    currentRejectInternshipId = null;
+    currentRejectInternshipType = null;
+}
+
+function confirmReject(reason) {
+    if (!currentRejectInternshipId) return;
+    
+    const formData = new FormData();
+    formData.append('reason', reason);
+    
+    fetch(`/reject/${currentRejectInternshipId}?type=${currentRejectInternshipType}`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || 'Application rejected!');
+            closeRejectionModal();
+            loadInternships(currentType);
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error rejecting application');
     });
 }
 

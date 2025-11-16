@@ -52,13 +52,16 @@ def send_accept_email(recipient_email, recipient_name, details=None):
         return False
 
 
-def send_reject_email(recipient_email, recipient_name):
+def send_reject_email(recipient_email, recipient_name, reason=''):
     """Send a rejection email to the applicant."""
     try:
         subject = "Swizosoft Internship — Application Update"
         sender = current_app.config.get('MAIL_DEFAULT_SENDER')
-        body = f"Hi {recipient_name},\n\nThank you for applying to the Swizosoft internship. We appreciate your interest, but we are unable to offer you a position at this time.\n\nWe encourage you to apply again in the future.\n\nBest wishes,\nSwizosoft Team"
-        html = f"<p>Hi {recipient_name},</p><p>Thank you for applying to the <strong>Swizosoft</strong> internship. We appreciate your interest, but we are unable to offer you a position at this time.</p><p>We encourage you to apply again in the future.</p><p>Best wishes,<br/>Swizosoft Team</p>"
+        
+        reason_text = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
+        
+        body = f"Hi {recipient_name},\n\nThank you for applying to the Swizosoft internship. We appreciate your interest, but we are unable to offer you a position at this time.\n\n{f'Reason: {reason}' if reason else ''}\n\nWe encourage you to apply again in the future.\n\nBest wishes,\nSwizosoft Team"
+        html = f"<p>Hi {recipient_name},</p><p>Thank you for applying to the <strong>Swizosoft</strong> internship. We appreciate your interest, but we are unable to offer you a position at this time.</p>{reason_text}<p>We encourage you to apply again in the future.</p><p>Best wishes,<br/>Swizosoft Team</p>"
 
         msg = Message(subject=subject, sender=sender, recipients=[recipient_email])
         msg.body = body
