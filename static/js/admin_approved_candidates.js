@@ -82,17 +82,10 @@ function renderApprovedCandidates(container, countElem, rows) {
         <tr>
             <th>Name</th>
             <th>USN</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th>Branch</th>
-            <th>College</th>
-            <th>Year</th>
-            <th>Domain</th>
-            <th>Interview Mode</th>
-            <th>View Resume</th>
             <th>View ID Proof</th>
+            <th>View Resume</th>
             <th>View Project</th>
-            <th>Actions</th>
+            <th>Action</th>
         </tr>
     `;
     table.appendChild(thead);
@@ -106,18 +99,11 @@ function renderApprovedCandidates(container, countElem, rows) {
         // Extract candidate details - approved_candidates table has consistent column names
         const name = r.name || 'N/A';
         const usn = r.usn || 'N/A';
-        const email = r.email || 'N/A';
-        const phone = r.phone_number || 'N/A';
-        const branch = r.branch || 'N/A';
-        const college = r.college || 'N/A';
-        const year = r.year || 'N/A';
-        const domain = r.domain || 'N/A';
-        const mode = r.mode_of_interview || 'N/A';
         const appId = r.application_id || r.id;
 
         // Build file view buttons based on filename presence (avoid expecting BLOBs in list API)
-        const resumeBtn = r.resume_name ? `<button class="table-action-btn table-view-btn" onclick="viewApprovedFile('${usn}', 'resume')">View Resume</button>` : '—';
         const idProofBtn = r.id_proof_name ? `<button class="table-action-btn table-view-btn" onclick="viewApprovedFile('${usn}', 'id_proof')">View ID Proof</button>` : '—';
+        const resumeBtn = r.resume_name ? `<button class="table-action-btn table-view-btn" onclick="viewApprovedFile('${usn}', 'resume')">View Resume</button>` : '—';
         const projectBtn = r.project_document_name ? `<button class="table-action-btn table-view-btn" onclick="viewApprovedFile('${usn}', 'project')">View Project</button>` : '—';
         const acceptBtn = `<button class="table-action-btn table-accept-btn" onclick="confirmApprovedAccept(${appId})">Accept</button>`;
         const rejectBtn = `<button class="table-action-btn table-reject-btn" onclick="showApprovedRejectionModal(${appId})">Reject</button>`;
@@ -125,17 +111,15 @@ function renderApprovedCandidates(container, countElem, rows) {
         tr.innerHTML = `
             <td class="table-name">${name}</td>
             <td class="table-usn">${usn}</td>
-            <td>${email}</td>
-            <td>${phone}</td>
-            <td>${branch}</td>
-            <td>${college}</td>
-            <td>${year}</td>
-            <td>${domain}</td>
-            <td>${mode}</td>
-            <td>${resumeBtn}</td>
             <td>${idProofBtn}</td>
+            <td>${resumeBtn}</td>
             <td>${projectBtn}</td>
-            <td>${acceptBtn} ${rejectBtn}</td>
+            <td>
+                <div class="table-actions">
+                    ${acceptBtn}
+                    ${rejectBtn}
+                </div>
+            </td>
         `;
         
         tbody.appendChild(tr);

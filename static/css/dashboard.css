@@ -496,6 +496,8 @@ body {
     height: 100%;
     background: rgba(0, 0, 0, 0.6);
     animation: fadeIn 0.3s ease;
+    padding: 0;
+    margin: 0;
 }
 
 @keyframes fadeIn {
@@ -505,21 +507,23 @@ body {
 
 .modal.show {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: stretch;
 }
 
 .modal-content {
     background: white;
-    border-radius: 12px;
-    padding: 30px;
-    max-width: 800px;
-    max-height: 90vh;
-    overflow-y: auto;
-    width: 95%;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
     position: relative;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: none;
     animation: slideUp 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
 }
 
 @keyframes slideUp {
@@ -537,36 +541,45 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    padding: 1.5rem;
     border-bottom: 1px solid #eee;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    flex-shrink: 0;
+    min-height: 60px;
 }
 
 .modal-header h3 {
     margin: 0;
-    font-size: 20px;
-    color: #333;
+    font-size: 1.2rem;
+    color: white;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .modal-actions {
     display: flex;
     gap: 8px;
+    align-items: center;
 }
 
 .modal-download-btn {
     background: #28a745;
     color: white;
     border: none;
-    padding: 10px 16px;
+    padding: 8px 14px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     transition: all 0.3s ease;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    flex-shrink: 0;
 }
 
 .modal-download-btn:hover {
@@ -576,42 +589,53 @@ body {
 }
 
 .modal-close {
-    background: #f0f0f0;
+    background: rgba(255, 255, 255, 0.2);
     border: none;
     width: 36px;
     height: 36px;
-    border-radius: 50%;
+    border-radius: 6px;
     font-size: 20px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
-    color: #666;
+    color: white;
     flex-shrink: 0;
 }
 
 .modal-close:hover {
-    background: #e0e0e0;
-    color: #000;
+    background: rgba(255, 255, 255, 0.3);
+    color: white;
 }
 
 #fileViewerContainer {
-    padding-top: 20px;
+    width: 100%;
+    height: 100%;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 0;
+    margin: 0;
+    background: white;
 }
 
 #fileViewerContainer img {
     max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin-bottom: 16px;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 0;
 }
 
 #fileViewerContainer iframe {
     width: 100%;
-    height: 600px;
+    height: 100%;
     border: none;
-    border-radius: 8px;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
 }
 
 #fileViewerContainer p {
@@ -619,6 +643,7 @@ body {
     font-size: 14px;
     line-height: 1.6;
     word-break: break-word;
+    padding: 20px;
 }
 
 /* ===== RESPONSIVE ===== */
@@ -660,11 +685,12 @@ body {
     .modal-content {
         width: 100%;
         max-width: 100%;
-        padding: 20px;
+        padding: 0;
+        height: 100%;
     }
 
     #fileViewerContainer iframe {
-        height: 400px;
+        height: 100%;
     }
 }
 

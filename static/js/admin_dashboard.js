@@ -86,6 +86,7 @@ function populateTable(type, data) {
         <tr>
             <th>Name</th>
             <th>USN</th>
+            ${type === 'free' ? '<th>Resume Score</th>' : ''}
             <th>View ID Proof</th>
             <th>View Resume</th>
             <th>View ${type === 'free' ? 'Project' : 'Payment'}</th>
@@ -109,6 +110,7 @@ function populateTable(type, data) {
         tr.innerHTML = `
             <td class="table-name">${row.name || 'N/A'}</td>
             <td class="table-usn">${row.usn || 'N/A'}</td>
+            ${type === 'free' ? `<td class="table-score">${(row.resume_score !== undefined && row.resume_score !== null) ? row.resume_score : '—'}</td>` : ''}
             <td>${idProofBtn}</td>
             <td>${resumeBtn}</td>
             <td>${projectBtn}</td>
@@ -250,7 +252,7 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
     
     // PDFs: embed in iframe
     if (lower.endsWith('.pdf')) {
-        fileViewerContainer.innerHTML = `<iframe id="fileFrame" src="${fileUrl}" style="width:100%;height:550px;border:none;"></iframe>`;
+        fileViewerContainer.innerHTML = `<iframe id="fileFrame" src="${fileUrl}" style="width:100%;height:100%;border:none;"></iframe>`;
         fileModal.classList.add('show');
         // Show download button after iframe fully loads
         const frame = document.getElementById('fileFrame');
@@ -267,7 +269,7 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
 
     // Images: embed with img tag
     if (lower.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
-        fileViewerContainer.innerHTML = `<img id="fileImg" src="${fileUrl}" style="max-width:100%;height:auto;border-radius:6px;" />`;
+        fileViewerContainer.innerHTML = `<img id="fileImg" src="${fileUrl}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;" />`;
         fileModal.classList.add('show');
         // Show download button after image loads
         const img = document.getElementById('fileImg');
@@ -287,7 +289,7 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
         const encodedUrl = encodeURIComponent(fileUrl);
         // Show loading message first
         fileViewerContainer.innerHTML = `<div style="text-align:center;padding:40px;color:#999;"><p>⏳ Loading document...</p></div>`;
-        fileViewerContainer.innerHTML += `<iframe id="fileFrame" src="https://docs.google.com/gview?url=${encodedUrl}&embedded=true" style="width:100%;height:550px;border:none;"></iframe>`;
+        fileViewerContainer.innerHTML += `<iframe id="fileFrame" src="https://docs.google.com/gview?url=${encodedUrl}&embedded=true" style="width:100%;height:100%;border:none;"></iframe>`;
         fileModal.classList.add('show');
         // Show download button after delay (Google Docs Viewer takes time)
         setTimeout(() => {

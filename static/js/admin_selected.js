@@ -49,45 +49,25 @@ function renderSelected(container, countElem, rows) {
 
     countElem.textContent = rows.length;
 
-    // Create table and build header dynamically from first row keys
+    // Create table with clean structure
     const table = document.createElement('table');
     table.className = 'applicants-table';
 
     const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-
-    // Use keys from the first row to build columns in stable order
-    const firstRow = rows[0];
-    const keys = Object.keys(firstRow || {});
-
-    // Preferred order for important fields (these will appear first if present)
-    const preferredOrder = [
-        'application_id', 'name', 'usn', 'email', 'phone', 'year', 'qualification',
-        'branch', 'college', 'domain', 'mode_of_interview', 'status', 'created_at', 'updated_at'
-    ];
-
-    // Build final ordered keys: preferred first (if present), then remaining keys alphabetically
-    const pref = [];
-    const remaining = [];
-    keys.forEach(k => {
-        if (preferredOrder.includes(k)) pref.push(k);
-        else remaining.push(k);
-    });
-    remaining.sort((a, b) => a.localeCompare(b));
-    const orderedKeys = pref.concat(remaining).filter(k => k !== 'application_id');
-
-    // Helper to prettify header labels
-    function prettyLabel(k) {
-        return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    }
-
-    orderedKeys.forEach(k => {
-        const th = document.createElement('th');
-        th.textContent = prettyLabel(k);
-        headerRow.appendChild(th);
-    });
-
-    thead.appendChild(headerRow);
+    thead.innerHTML = `
+        <tr>
+            <th>Name</th>
+            <th>USN</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Year</th>
+            <th>Branch</th>
+            <th>College</th>
+            <th>Domain</th>
+            <th>Interview Mode</th>
+            <th>Status</th>
+        </tr>
+    `;
     table.appendChild(thead);
 
     // Table body
@@ -95,62 +75,31 @@ function renderSelected(container, countElem, rows) {
 
     rows.forEach(r => {
         const tr = document.createElement('tr');
-        orderedKeys.forEach(k => {
-            const td = document.createElement('td');
-            let val = r[k];
-
-            // Default empty
-            if (val === null || val === undefined || val === '') {
-                td.textContent = '—';
-                tr.appendChild(td);
-                return;
-            }
-
-            // Binary content placeholder
-            if (k.toLowerCase().endsWith('_content')) {
-                td.textContent = '[BINARY DATA]';
-                tr.appendChild(td);
-                return;
-            }
-
-            // Formatting for specific fields to look professional
-            const key = k.toLowerCase();
-            if (key === 'email' || key === 'applicant_email' || key === 'email_address') {
-                const a = document.createElement('a');
-                a.href = `mailto:${val}`;
-                a.textContent = val;
-                td.appendChild(a);
-            } else if (key === 'phone' || key === 'mobile' || key === 'contact' || key === 'phone_number') {
-                const a = document.createElement('a');
-                a.href = `tel:${val}`;
-                a.textContent = val;
-                td.appendChild(a);
-            } else if (key === 'name' || key === 'full_name' || key === 'applicant_name') {
-                const strong = document.createElement('strong');
-                strong.textContent = String(val);
-                td.appendChild(strong);
-            } else if (key === 'usn' || key === 'roll' || key === 'rollno' || key === 'roll_no') {
-                td.textContent = String(val).toUpperCase();
-            } else if (key === 'created_at' || key === 'updated_at') {
-                // format timestamps nicely
-                try {
-                    const d = new Date(val);
-                    if (!isNaN(d)) td.textContent = d.toLocaleString();
-                    else td.textContent = String(val);
-                } catch (e) {
-                    td.textContent = String(val);
-                }
-            } else {
-                // Generic formatting
-                if (typeof val === 'object') {
-                    try { td.textContent = JSON.stringify(val); } catch (e) { td.textContent = String(val); }
-                } else {
-                    td.textContent = String(val);
-                }
-            }
-
-            tr.appendChild(td);
-        });
+        
+        const name = r.name || r.full_name || r.applicant_name || 'N/A';
+        const usn = r.usn || r.roll || r.roll_no || r.rollno || 'N/A';
+        const email = r.email || r.applicant_email || r.email_address || 'N/A';
+        const phone = r.phone || r.phone_number || r.mobile || r.contact || 'N/A';
+        const year = r.year || r.qualification || 'N/A';
+        const branch = r.branch || 'N/A';
+        const college = r.college || 'N/A';
+        const domain = r.domain || 'N/A';
+        const mode = r.mode_of_interview || 'N/A';
+        const status = r.status || 'Pending';
+        
+        tr.innerHTML = `
+            <td class="table-name"><strong>${name}</strong></td>
+            <td class="table-usn">${String(usn).toUpperCase()}</td>
+            <td><a href="mailto:${email}" style="color: #667eea; text-decoration: none;">${email}</a></td>
+            <td><a href="tel:${phone}" style="color: #667eea; text-decoration: none;">${phone}</a></td>
+            <td>${year}</td>
+            <td>${branch}</td>
+            <td>${college}</td>
+            <td>${domain}</td>
+            <td>${mode}</td>
+            <td><span class="status-badge" style="background: #667eea; color: white; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem;">${status}</span></td>
+        `;
+        
         tbody.appendChild(tr);
     });
 

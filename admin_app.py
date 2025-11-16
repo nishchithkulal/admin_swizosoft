@@ -220,6 +220,41 @@ def admin_get_internships():
                 )
             cursor.execute(alt_query)
             rows = cursor.fetchall()
+        # If free internships, enrich rows with resume score from resume_score table
+        if internship_type == 'free' and rows:
+            try:
+                # Join resume_score by free_internship_application_id matching internship row id
+                score_map = {}
+                try:
+                    cursor.execute("""
+                        SELECT free_internship_application_id, score 
+                        FROM resume_score
+                    """)
+                    for row in cursor.fetchall():
+                        try:
+                            app_id = row.get('free_internship_application_id') if isinstance(row, dict) else row[0]
+                            score = row.get('score') if isinstance(row, dict) else row[1]
+                            if app_id is not None:
+                                score_map[str(app_id)] = score
+                        except Exception:
+                            continue
+                except Exception as e:
+                    print(f'Warning: Could not fetch resume_score data: {e}')
+                    score_map = {}
+
+                # Attach resume_score to each returned internship row by matching id
+                for r in rows:
+                    internship_id = r.get('id')
+                    if internship_id is not None and str(internship_id) in score_map:
+                        r['resume_score'] = score_map[str(internship_id)]
+                    else:
+                        r['resume_score'] = None
+                
+                # Sort rows by resume_score in descending order (highest score first)
+                rows.sort(key=lambda x: (x.get('resume_score') is None, -x.get('resume_score') if x.get('resume_score') is not None else 0))
+            except Exception as e:
+                print(f'Warning: Could not enrich with resume_score: {e}')
+
         cursor.close()
         conn.close()
         return jsonify({'success': True, 'data': rows})
