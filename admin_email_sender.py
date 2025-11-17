@@ -110,6 +110,56 @@ Swizosoft Pvt. Ltd."""
         return False
 
 
+def send_report_form_email(recipient_email, recipient_name):
+    """Send report form submission email to candidate who has completed their internship.
+    
+    This email asks the candidate to fill out the completion form and upload project documents.
+    """
+    try:
+        sender = current_app.config.get('MAIL_DEFAULT_SENDER')
+        
+        subject = "Swizosoft Internship — Complete Your Project Report"
+        
+        body = f"""Hi {recipient_name},
+
+Congratulations! You have completed your internship at Swizosoft!
+
+Please fill out the completion form and upload all relevant documents (project report, deliverables, etc.) using the link below:
+
+📋 Complete Your Internship Form & Upload Documents:
+http://127.0.0.1:5000/report-form
+
+Please ensure all documents are uploaded and the form is completed before the deadline.
+
+If you have any questions, feel free to reach out to us.
+
+Best regards,
+Swizosoft Internship Management System"""
+
+        html = f"""<p>Hi {recipient_name},</p>
+
+<p>Congratulations! You have completed your internship at <strong>Swizosoft</strong>!</p>
+
+<p>Please fill out the completion form and upload all relevant documents (project report, deliverables, etc.) using the link below:</p>
+
+<p><a href="http://127.0.0.1:5000/report-form" style="background-color: #28a745; color: white; padding: 12px 22px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight:600;">📋 Complete Your Internship Form & Upload Documents</a></p>
+
+<p>Please ensure all documents are uploaded and the form is completed before the deadline.</p>
+
+<p>If you have any questions, feel free to reach out to us.</p>
+
+<p>Best regards,<br/>Swizosoft Internship Management System</p>"""
+
+        msg = Message(subject=subject, sender=sender, recipients=[recipient_email])
+        msg.body = body
+        msg.html = html
+        mail.send(msg)
+        return True
+    except Exception as e:
+        current_app.logger.exception('Failed to send report form email')
+        return False
+
+
 def send_reject_email(recipient_email, recipient_name, reason='', internship_type='free'):
     """Send a rejection email to the applicant.
     

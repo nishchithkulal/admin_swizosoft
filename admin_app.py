@@ -583,22 +583,8 @@ def admin_api_send_report_form_email():
 
         # Send email with report form link
         try:
-            from admin_email_sender import send_accept_email
-            email_body = f"""
-Dear {name},
-
-Congratulations! You have completed your internship! 
-
-Please fill out the completion form and upload all relevant documents using the link below:
-
-📋 Complete Your Internship Form: http://127.0.0.1:5000/report-form
-
-Please ensure all documents are uploaded and the form is completed before the deadline.
-
-Best regards,
-Swizosoft Internship Management System
-"""
-            send_accept_email(email, name, email_body)
+            from admin_email_sender import send_report_form_email
+            send_report_form_email(email, name)
         except Exception as email_error:
             app.logger.warning(f"⚠ Email sending warning: {email_error}")
             # Don't fail the API call if email fails
@@ -1292,6 +1278,20 @@ def handle_approved_candidate_accept(approved_candidate):
 def admin_accept(user_id):
     """Accept an internship application and move to appropriate table"""
     
+    # First check if this is an approved candidate (try by user_id or application_id)
+    try:
+        approved_candidate = ApprovedCandidate.query.filter_by(user_id=user_id).first()
+        if not approved_candidate:
+            # Try by application_id
+            approved_candidate = ApprovedCandidate.query.filter_by(application_id=str(user_id)).first()
+        
+        if approved_candidate:
+            # Handle approved candidate acceptance - move to Selected
+            return handle_approved_candidate_accept(approved_candidate)
+    except Exception as e:
+        app.logger.warning(f"Could not check approved candidates for user {user_id}: {e}")
+    
+    # Otherwise, handle as paid/free internship
     internship_type = request.args.get('type', 'free')
     email, name = _fetch_applicant_contact(user_id, internship_type)
     
