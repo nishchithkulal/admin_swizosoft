@@ -167,35 +167,42 @@ function updateStatus(internshipId, status, internshipType) {
   ) {
     return;
   }
+
   // Call the accept/reject endpoints which also send emails
   const endpoint =
     status === "ACCEPTED"
       ? `/accept/${internshipId}?type=${internshipType}`
       : `/reject/${internshipId}?type=${internshipType}`;
+
   fetch(endpoint, { method: "POST" })
-    .then((response) => response.json())
-    .then((data) => {
-      if (data.success) {
-        // If server returned selected_inserted flag (for paid type), surface it
-        if (
-          data.hasOwnProperty("selected_inserted") &&
-          data.selected_inserted === false
-        ) {
-          const err =
-            data.selected_insert_error ||
-            "Candidate not inserted into Selected (possible duplicate USN)";
-          alert(
-            (data.message || `Application ${status.toLowerCase()}!`) +
-              "\nNote: " +
-              err
-          );
-        } else {
-          alert(data.message || `Application ${status.toLowerCase()}!`);
-        }
-        // Refresh the table
+    .then((response) => {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        return response
+          .json()
+          .then((data) => ({ status: response.status, data: data }));
+      }
+      return { status: response.status, data: null };
+    })
+    .then(({ status: httpStatus, data }) => {
+      // Handle 409 Conflict (Duplicate USN)
+      if (httpStatus === 409) {
+        alert(data.error);
+        return;
+      }
+
+      // Handle success
+      if (data && data.success) {
+        alert(data.message || `Application ${status.toLowerCase()}!`);
         loadInternships(currentType);
-      } else {
-        alert("Error: " + (data.error || "Unknown error"));
+      }
+      // Handle error
+      else if (data && data.error) {
+        alert("Error: " + data.error);
+      }
+      // Fallback
+      else {
+        alert(`Error updating status`);
       }
     })
     .catch((error) => {

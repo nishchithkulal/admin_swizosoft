@@ -349,17 +349,35 @@ def admin_login():
     return render_template('admin_login.html', error=error)
 
 
-@app.route('/admin/logout')
-def admin_logout():
-    session.clear()
-    return redirect(url_for('admin_login'))
-
-
 @app.route('/admin/dashboard')
 @login_required
 def admin_dashboard():
-    # Dashboard HTML will fetch data via API
+    """Render admin dashboard"""
     return render_template('admin_dashboard.html')
+
+@app.route('/admin/selected')
+@login_required
+def admin_selected():
+    """Render selected candidates page"""
+    return render_template('admin_selected.html')
+
+@app.route('/admin/approved-candidates')
+@login_required
+def admin_approved_candidates():
+    """Render approved candidates page"""
+    return render_template('admin_approved_candidates.html')
+
+@app.route('/admin/issue-certificate')
+@login_required
+def admin_issue_certificate():
+    """Render the Issue Certificate page"""
+    return render_template('admin_issue_certificate.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    """Logout route"""
+    session.clear()
+    return redirect(url_for('admin_login'))
 
 
 @app.route('/admin/api/get-internships')
@@ -445,31 +463,19 @@ def admin_get_internships():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/selected')
-@login_required
-def admin_selected():
-    return render_template('admin_selected.html')
-
-
-@app.route('/admin/approved-candidates')
-@login_required
-def admin_approved_candidates():
-    return render_template('admin_approved_candidates.html')
-
-
 @app.route('/admin/api/get-selected')
 @login_required
 def admin_api_get_selected():
-    """Fetch all rows from Selected table using exact SQL query"""
+    """Fetch all rows from Selected table where status = 'ongoing' using exact SQL query"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # Execute exact query: SELECT * FROM `Selected`
+        # Execute exact query: SELECT * FROM `Selected` WHERE status = 'ongoing' ORDER BY approved_date DESC
         try:
-            cursor.execute('SELECT * FROM `Selected`')
+            cursor.execute("SELECT * FROM `Selected` WHERE status = 'ongoing' ORDER BY approved_date DESC")
             rows = cursor.fetchall()
-            print(f"✓ Fetched {len(rows)} rows from Selected table")
+            print(f"✓ Fetched {len(rows)} rows from Selected table (status='ongoing')")
             
             # Convert bytes to base64 strings for JSON serialization
             processed_rows = []
@@ -500,6 +506,115 @@ def admin_api_get_selected():
         return jsonify({'success': True, 'data': processed_rows})
     except Exception as e:
         print(f"✗ Exception in /admin/api/get-selected: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/get-completed-candidates')
+@login_required
+def admin_api_get_completed_candidates():
+    """Fetch all rows from Selected table where status = 'completed' for certificate issuance"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Execute query: SELECT * FROM Selected WHERE status = 'completed'
+        try:
+            cursor.execute("SELECT * FROM `Selected` WHERE status = 'completed' ORDER BY completion_date DESC")
+            rows = cursor.fetchall()
+            app.logger.info(f"✓ Fetched {len(rows)} completed rows from Selected table")
+            
+            # Convert bytes to base64 strings for JSON serialization
+            processed_rows = []
+            for row in rows:
+                if isinstance(row, dict):
+                    processed_row = {}
+                    for key, val in row.items():
+                        if isinstance(val, bytes):
+                            import base64
+                            processed_row[key] = base64.b64encode(val).decode('utf-8')
+                        else:
+                            processed_row[key] = val
+                    processed_rows.append(processed_row)
+                else:
+                    processed_rows.append(row)
+            
+            if processed_rows:
+                app.logger.info(f"  Total processed rows: {len(processed_rows)}")
+                
+        except Exception as e:
+            app.logger.error(f"✗ Query failed: {e}")
+            processed_rows = []
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'data': processed_rows})
+    except Exception as e:
+        app.logger.error(f"✗ Exception in /admin/api/get-completed-candidates: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/send-report-form-email', methods=['POST'])
+@login_required
+def admin_api_send_report_form_email():
+    """Send report form email to candidate and mark their Selected status as completed."""
+    try:
+        data = request.get_json()
+        usn = data.get('usn', '').strip()
+        email = data.get('email', '').strip()
+        name = data.get('name', '').strip()
+
+        if not usn or not email or not name:
+            return jsonify({'success': False, 'error': 'Missing required fields: usn, email, name'}), 400
+
+        # Update Selected table status to 'completed'
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE `Selected` SET status = %s WHERE usn = %s', ('completed', usn))
+        conn.commit()
+        rows_affected = cursor.rowcount
+        cursor.close()
+
+        if rows_affected == 0:
+            conn.close()
+            return jsonify({'success': False, 'error': f'No candidate found with USN: {usn}'}), 404
+
+        conn.close()
+
+        # Send email with report form link
+        try:
+            from admin_email_sender import send_accept_email
+            email_body = f"""
+Dear {name},
+
+Congratulations! You have completed your internship! 
+
+Please fill out the completion form and upload all relevant documents using the link below:
+
+📋 Complete Your Internship Form: http://127.0.0.1:5000/report-form
+
+Please ensure all documents are uploaded and the form is completed before the deadline.
+
+Best regards,
+Swizosoft Internship Management System
+"""
+            send_accept_email(email, name, email_body)
+        except Exception as email_error:
+            app.logger.warning(f"⚠ Email sending warning: {email_error}")
+            # Don't fail the API call if email fails
+
+        return jsonify({
+            'success': True,
+            'message': f'Email sent to {email} and status updated to completed',
+            'data': {
+                'usn': usn,
+                'email': email,
+                'name': name
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"✗ Exception in /admin/api/send-report-form-email: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1175,27 +1290,20 @@ def handle_approved_candidate_accept(approved_candidate):
 @app.route('/accept/<int:user_id>', methods=['POST'])
 @login_required
 def admin_accept(user_id):
-    # First check if this is an approved candidate (by user_id or application_id)
-    try:
-        approved_candidate = ApprovedCandidate.query.filter_by(user_id=user_id).first()
-        if not approved_candidate:
-            # Try by application_id
-            approved_candidate = ApprovedCandidate.query.filter_by(application_id=str(user_id)).first()
-        
-        if approved_candidate:
-            # Handle approved candidate acceptance
-            return handle_approved_candidate_accept(approved_candidate)
-    except Exception as e:
-        app.logger.warning(f"Could not check approved candidates for user {user_id}: {e}")
+    """Accept an internship application and move to appropriate table"""
     
-    # Otherwise, handle as paid/free internship
     internship_type = request.args.get('type', 'free')
     email, name = _fetch_applicant_contact(user_id, internship_type)
+    
     if not email:
         return jsonify({'success': False, 'error': 'Applicant email not found'}), 404
 
-    # details to include in accept email (populated for free internships)
-    details_for_email = None
+    details_for_email = {
+        'application_id': user_id,
+        'name': name or '',
+        'email': email or ''
+    }
+
     # Update status in DB (best-effort)
     try:
         conn = get_db()
@@ -1213,199 +1321,17 @@ def admin_accept(user_id):
                 pass
         cursor.close()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        app.logger.warning(f"Could not update status: {e}")
 
-    # Track whether we inserted into Selected (for paid internships)
-    selected_inserted = None
-    selected_insert_error = None
-
-    # If this is a paid internship, store the full applicant details in the Selected table
-    if internship_type == 'paid':
-        try:
-            conn = get_db()
-            cursor = conn.cursor()
-            paid_table = get_resolved_table('paid_internship')
-            
-            # Fetch applicant row
-            row = None
-            try:
-                cursor.execute(f"SELECT * FROM {paid_table} WHERE id = %s LIMIT 1", (user_id,))
-                row = cursor.fetchone()
-            except Exception as e:
-                alt_table = paid_table.replace('_application', '') if paid_table.endswith('_application') else paid_table + '_application'
-                try:
-                    cursor.execute(f"SELECT * FROM {alt_table} WHERE id = %s LIMIT 1", (user_id,))
-                    row = cursor.fetchone()
-                except Exception:
-                    pass
-
-            if row:
-                # Extract basic info
-                row_map = {k.lower(): v for k, v in (row.items() if isinstance(row, dict) else [])}
-                
-                application_id = user_id
-                name_val = row_map.get('name') or row_map.get('full_name') or ''
-                email_val = row_map.get('email') or row_map.get('applicant_email') or ''
-                phone_val = row_map.get('phone') or row_map.get('mobile') or row_map.get('contact_number') or ''
-                usn_val = row_map.get('usn') or row_map.get('roll') or ''
-                year_val = row_map.get('year') or row_map.get('sem') or ''
-                qualification_val = row_map.get('qualification') or ''
-                branch_val = row_map.get('branch') or row_map.get('department') or ''
-                college_val = row_map.get('college') or ''
-                domain_val = row_map.get('domain') or ''
-                project_description_val = row_map.get('project_description') or ''
-                project_name_val = row_map.get('project_document') or row_map.get('project_name') or ''
-                internship_duration_val = row_map.get('internship_duration') or '1 month'
-                
-                # Fetch document BLOBs
-                project_blob = None
-                try:
-                    cursor.execute(
-                        "SELECT project_document_content FROM paid_document_store WHERE paid_internship_application_id = %s LIMIT 1",
-                        (user_id,)
-                    )
-                    blob_row = cursor.fetchone()
-                    if blob_row:
-                        if isinstance(blob_row, dict):
-                            project_blob = blob_row.get('project_document_content')
-                        else:
-                            project_blob = blob_row[0]
-                except Exception:
-                    pass
-                
-                # Insert into Selected table (USN is treated as primary key; avoid duplicates)
-                try:
-                    inserted = False
-
-                    if not usn_val:
-                        app.logger.error(f"Cannot insert paid applicant {user_id} ({name_val}) into Selected: missing USN")
-                    else:
-                        # Check if USN already exists in Selected (USN is primary key)
-                        cursor.execute("SELECT usn FROM Selected WHERE usn = %s LIMIT 1", (usn_val,))
-                        exists = cursor.fetchone()
-
-                        if exists:
-                            # USN already exists: update the existing Selected record (upsert behavior)
-                            try:
-                                # Parse months from internship_duration (e.g., '1 month', '3 months')
-                                import re
-                                m = re.search(r"(\d+)", str(internship_duration_val or '1'))
-                                months = int(m.group(1)) if m else 1
-
-                                # Generate candidate_id if not already present
-                                candidate_id = None
-                                try:
-                                    cursor.execute("SELECT candidate_id FROM Selected WHERE usn = %s", (usn_val,))
-                                    existing = cursor.fetchone()
-                                    candidate_id = existing.get('candidate_id') if existing and isinstance(existing, dict) else (existing[0] if existing else None)
-                                except Exception:
-                                    pass
-                                
-                                if not candidate_id:
-                                    candidate_id = generate_candidate_id(domain_val, conn)
-
-                                update_sql = """UPDATE Selected SET
-                                    name = %s,
-                                    email = %s,
-                                    phone = %s,
-                                    year = %s,
-                                    qualification = %s,
-                                    branch = %s,
-                                    college = %s,
-                                    domain = %s,
-                                    project_description = %s,
-                                    internship_project_name = %s,
-                                    internship_project_content = %s,
-                                    project_title = %s,
-                                    internship_duration = %s,
-                                    approved_date = CURDATE(),
-                                    status = 'ongoing',
-                                    completion_date = DATE_ADD(CURDATE(), INTERVAL %s MONTH),
-                                    candidate_id = %s
-                                    WHERE usn = %s"""
-
-                                cursor.execute(update_sql, (
-                                    name_val, email_val, phone_val,
-                                    year_val, qualification_val, branch_val, college_val, domain_val,
-                                    project_description_val, project_name_val, project_blob, project_name_val,
-                                    internship_duration_val, months, candidate_id, usn_val
-                                ))
-                                conn.commit()
-                                inserted = True
-                                app.logger.info(f"Updated existing Selected record for USN {usn_val} (applicant {user_id} - {name_val})")
-                            except Exception as e:
-                                app.logger.error(f"Failed to update existing Selected record for USN {usn_val}: {e}")
-                                # fall through with inserted False
-                        else:
-                            # Parse months for completion_date
-                            import re
-                            m = re.search(r"(\d+)", str(internship_duration_val or '1'))
-                            months = int(m.group(1)) if m else 1
-
-                            # Generate candidate_id for new record
-                            candidate_id = generate_candidate_id(domain_val, conn)
-
-                            insert_sql = """INSERT INTO Selected 
-                            (name, email, phone, usn, year, qualification, branch, college, domain, 
-                             project_description, internship_project_name, internship_project_content, project_title, internship_duration, approved_date, status, completion_date, candidate_id)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), 'ongoing', DATE_ADD(CURDATE(), INTERVAL %s MONTH), %s)"""
-
-                            cursor.execute(insert_sql, (
-                                name_val, email_val, phone_val, usn_val, year_val,
-                                qualification_val, branch_val, college_val, domain_val,
-                                project_description_val, project_name_val, project_blob, project_name_val,
-                                internship_duration_val, months, candidate_id
-                            ))
-                            conn.commit()
-                            inserted = True
-                            app.logger.info(f"Successfully inserted paid applicant {user_id} ({name_val}) into Selected (USN: {usn_val})")
-
-                    # Now delete original records ONLY if we inserted successfully
-                    if inserted:
-                        try:
-                            cursor.execute("DELETE FROM paid_document_store WHERE paid_internship_application_id = %s", (user_id,))
-                            conn.commit()
-                        except Exception as e:
-                            app.logger.warning(f"Could not delete documents: {e}")
-
-                        try:
-                            cursor.execute(f"DELETE FROM {paid_table} WHERE id = %s", (user_id,))
-                            conn.commit()
-                            app.logger.info(f"Deleted original paid application for {user_id}")
-                        except Exception:
-                            alt_table = paid_table.replace('_application', '') if paid_table.endswith('_application') else paid_table + '_application'
-                            try:
-                                cursor.execute(f"DELETE FROM {alt_table} WHERE id = %s", (user_id,))
-                                conn.commit()
-                            except Exception as e:
-                                app.logger.warning(f"Could not delete from {alt_table}: {e}")
-                            
-                except Exception as e:
-                    app.logger.error(f"Error inserting/deleting paid applicant {user_id}: {e}")
-                    selected_insert_error = str(e)
-                    try:
-                        conn.rollback()
-                    except Exception:
-                        pass
-                finally:
-                    # reflect insertion outcome
-                    selected_inserted = bool(inserted)
-            else:
-                app.logger.error(f"Could not find paid applicant {user_id}")
-            
-            cursor.close()
-            conn.close()
-        except Exception as e:
-            app.logger.exception(f"Error processing paid internship for {user_id}: {e}")
-
-    elif internship_type == 'free':
+    # ===== FREE INTERNSHIP: Move to approved_candidates =====
+    if internship_type == 'free':
         try:
             conn = get_db()
             cursor = conn.cursor()
             free_table = get_resolved_table('free_internship')
             
-            # Fetch full row from free internship table
+            # Fetch applicant row
             row = None
             try:
                 cursor.execute(f"SELECT * FROM {free_table} WHERE id = %s LIMIT 1", (user_id,))
@@ -1417,7 +1343,7 @@ def admin_accept(user_id):
                     row = cursor.fetchone()
                 except Exception:
                     row = None
-            
+
             if not row:
                 cursor.close()
                 conn.close()
@@ -1433,16 +1359,16 @@ def admin_accept(user_id):
                 if existing_candidate:
                     cursor.close()
                     conn.close()
-                    app.logger.warning(f"Duplicate USN attempt: {usn_val} already exists in approved_candidates")
+                    app.logger.warning(f"Duplicate USN in approved_candidates: {usn_val}")
                     return jsonify({
                         'success': False, 
                         'error': f'This person is already present in the approved candidates list. USN: {usn_val} | Name: {existing_candidate.name}',
                         'code': 'DUPLICATE_USN'
-                    }), 409  # 409 Conflict status code
+                    }), 409
             except Exception as e:
-                app.logger.warning(f"Error checking for duplicate USN: {e}")
+                app.logger.warning(f"Could not check for duplicate USN: {e}")
             
-            # If we have a row, try to fetch file BLOBs from free_document_store
+            # Fetch BLOBs from free_document_store
             resume_blob = None
             project_blob = None
             id_proof_blob = None
@@ -1450,155 +1376,237 @@ def admin_accept(user_id):
             project_document_name = None
             id_proof_name = None
             
-            if row:
-                # First, get filenames from the application row itself
-                resume_name = row_map.get('resume')
-                project_document_name = row_map.get('project_document')
-                id_proof_name = row_map.get('id_proof')
-                
-                # Now fetch BLOB content from free_document_store
-                try:
-                    cursor.execute(
-                        "SELECT resume_content, project_document_content, id_proof_content FROM free_document_store WHERE free_internship_application_id = %s LIMIT 1",
-                        (user_id,)
-                    )
-                    blob_row = cursor.fetchone()
-                    if blob_row:
-                        if isinstance(blob_row, dict):
-                            resume_blob = blob_row.get('resume_content')
-                            project_blob = blob_row.get('project_document_content')
-                            id_proof_blob = blob_row.get('id_proof_content')
-                        else:
-                            try:
-                                resume_blob = blob_row[0]
-                            except Exception:
-                                resume_blob = None
-                            try:
-                                project_blob = blob_row[1]
-                            except Exception:
-                                project_blob = None
-                            try:
-                                id_proof_blob = blob_row[2]
-                            except Exception:
-                                id_proof_blob = None
-                except Exception as e:
-                    app.logger.warning(f"Could not fetch document BLOBs: {e}")
+            resume_name = row_map.get('resume')
+            project_document_name = row_map.get('project_document')
+            id_proof_name = row_map.get('id_proof')
+            
+            try:
+                cursor.execute(
+                    "SELECT resume_content, project_document_content, id_proof_content FROM free_document_store WHERE free_internship_application_id = %s LIMIT 1",
+                    (user_id,)
+                )
+                blob_row = cursor.fetchone()
+                if blob_row:
+                    if isinstance(blob_row, dict):
+                        resume_blob = blob_row.get('resume_content')
+                        project_blob = blob_row.get('project_document_content')
+                        id_proof_blob = blob_row.get('id_proof_content')
+                    else:
+                        resume_blob = blob_row[0] if len(blob_row) > 0 else None
+                        project_blob = blob_row[1] if len(blob_row) > 1 else None
+                        id_proof_blob = blob_row[2] if len(blob_row) > 2 else None
+            except Exception as e:
+                app.logger.warning(f"Could not fetch document BLOBs: {e}")
             
             cursor.close()
             conn.close()
             
+            # Extract applicant details
+            name_val = row_map.get('name') or row_map.get('full_name') or ''
+            email_val = row_map.get('email') or row_map.get('applicant_email') or ''
+            phone_val = row_map.get('phone') or row_map.get('mobile') or ''
+            year_val = row_map.get('year') or row_map.get('sem') or ''
+            qualification_val = row_map.get('qualification') or ''
+            branch_val = row_map.get('branch') or row_map.get('department') or ''
+            college_val = row_map.get('college') or ''
+            domain_val = row_map.get('domain') or ''
+            mode_of_interview_val = row_map.get('mode_of_interview') or 'online'
+            
             # Create and insert ApprovedCandidate record
-            approved_inserted = False
-            if row:
+            try:
+                approved_candidate = ApprovedCandidate(
+                    usn=usn_val,
+                    application_id=str(user_id),
+                    user_id=user_id,
+                    name=name_val,
+                    email=email_val,
+                    phone_number=phone_val,
+                    year=year_val,
+                    qualification=qualification_val,
+                    branch=branch_val,
+                    college=college_val,
+                    domain=domain_val,
+                    mode_of_interview=mode_of_interview_val,
+                    resume_name=resume_name,
+                    resume_content=resume_blob,
+                    project_document_name=project_document_name,
+                    project_document_content=project_blob,
+                    id_proof_name=id_proof_name,
+                    id_proof_content=id_proof_blob
+                )
+                
+                db.session.add(approved_candidate)
+                db.session.commit()
+                app.logger.info(f"✓ Successfully inserted free applicant {user_id} ({usn_val}) into approved_candidates")
+                
+                # Delete from free_internship_application and free_document_store
                 try:
-                    # Extract values with fallback logic
-                    def get_field(keys, default=None):
-                        for key in keys:
-                            if key.lower() in row_map:
-                                return row_map[key.lower()]
-                        return default
+                    conn = get_db()
+                    cursor = conn.cursor()
                     
-                    app_id = get_field(['application_id'], str(user_id))
-                    name_val = get_field(['name', 'full_name', 'applicant_name'], '')
-                    email_val = get_field(['email', 'applicant_email'], '')
-                    phone_val = get_field(['phone', 'mobile', 'phone_number', 'contact'], '')
-                    year_val = get_field(['year', 'sem', 'semester', 'batch'], '')
-                    qualification_val = get_field(['qualification', 'degree'], '')
-                    branch_val = get_field(['branch', 'department', 'stream'], '')
-                    college_val = get_field(['college', 'institution', 'institute'], '')
-                    domain_val = get_field(['domain'], '')
-                    mode_of_interview_val = get_field(['mode_of_interview', 'interview_mode'], 'online')
+                    cursor.execute("DELETE FROM free_document_store WHERE free_internship_application_id = %s", (user_id,))
+                    conn.commit()
+                    app.logger.info(f"✓ Deleted documents for free applicant {user_id}")
                     
-                    # Create new approved candidate
-                    approved_candidate = ApprovedCandidate(
-                        usn=usn_val,
-                        application_id=app_id,
-                        user_id=user_id,
-                        name=name_val,
-                        email=email_val,
-                        phone_number=phone_val,
-                        year=year_val,
-                        qualification=qualification_val,
-                        branch=branch_val,
-                        college=college_val,
-                        domain=domain_val,
-                        mode_of_interview=mode_of_interview_val,
-                        resume_name=resume_name,
-                        resume_content=resume_blob,
-                        project_document_name=project_document_name,
-                        project_document_content=project_blob,
-                        id_proof_name=id_proof_name,
-                        id_proof_content=id_proof_blob
-                    )
-
-                    try:
-                        db.session.add(approved_candidate)
-                        db.session.commit()
-                        approved_inserted = True
-                        app.logger.info(f"✓ Successfully inserted free applicant {user_id} ({usn_val}) into approved_candidates")
-                    except Exception as e:
-                        app.logger.error(f"Failed to insert approved candidate: {str(e)}")
-                        try:
-                            db.session.rollback()
-                        except Exception:
-                            pass
-                        approved_inserted = False
+                    cursor.execute(f"DELETE FROM {free_table} WHERE id = %s", (user_id,))
+                    conn.commit()
+                    app.logger.info(f"✓ Deleted free application for {user_id}")
                     
-                    # Delete from free_internship_application and free_document_store only if insertion successful
-                    if approved_inserted:
-                        try:
-                            conn = get_db()
-                            cursor = conn.cursor()
-                            cursor.execute("DELETE FROM free_document_store WHERE free_internship_application_id = %s", (user_id,))
-                            conn.commit()
-                            app.logger.info(f"✓ Deleted documents for free applicant {user_id}")
-                        except Exception as e:
-                            app.logger.warning(f"Could not delete documents: {e}")
-                        
-                        try:
-                            conn = get_db()
-                            cursor = conn.cursor()
-                            cursor.execute(f"DELETE FROM {free_table} WHERE id = %s", (user_id,))
-                            conn.commit()
-                            app.logger.info(f"✓ Deleted free application for {user_id}")
-                        except Exception as e:
-                            alt_table = free_table.replace('_application', '') if free_table.endswith('_application') else free_table + '_application'
-                            try:
-                                conn = get_db()
-                                cursor = conn.cursor()
-                                cursor.execute(f"DELETE FROM {alt_table} WHERE id = %s", (user_id,))
-                                conn.commit()
-                                app.logger.info(f"✓ Deleted free application from {alt_table}")
-                            except Exception as e2:
-                                app.logger.warning(f"Could not delete: {e2}")
-                    
-                    # Prepare details for email
-                    details_for_email = {
-                        'application_id': app_id,
-                        'usn': usn_val,
-                        'name': name_val,
-                        'email': email_val,
-                        'phone': phone_val,
-                        'year': year_val,
-                        'qualification': qualification_val,
-                        'branch': branch_val,
-                        'college': college_val,
-                        'domain': domain_val
-                    }
+                    cursor.close()
+                    conn.close()
                 except Exception as e:
-                    app.logger.error(f"Error processing free applicant: {e}")
-                    approved_inserted = False
-            else:
-                app.logger.error(f"No row found for free applicant {user_id}")
-                approved_inserted = False
+                    app.logger.warning(f"Error cleaning up free application: {e}")
+                    try:
+                        alt_table = free_table.replace('_application', '') if free_table.endswith('_application') else free_table + '_application'
+                        conn = get_db()
+                        cursor = conn.cursor()
+                        cursor.execute(f"DELETE FROM {alt_table} WHERE id = %s", (user_id,))
+                        conn.commit()
+                        cursor.close()
+                        conn.close()
+                    except Exception as e2:
+                        app.logger.warning(f"Could not delete from {alt_table}: {e2}")
+                
+            except Exception as e:
+                app.logger.error(f"Failed to insert free applicant into approved_candidates: {e}")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                return jsonify({'success': False, 'error': f'Failed to move to approved_candidates: {e}'}), 500
         
         except Exception as e:
-            app.logger.exception(f"Error in free internship acceptance: {e}")
-            approved_inserted = False
+            app.logger.exception(f"Error processing free internship: {e}")
+            return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+    
+    # ===== PAID INTERNSHIP: Move to Selected =====
+    elif internship_type == 'paid':
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            paid_table = get_resolved_table('paid_internship')
+            
+            # Fetch applicant row
+            row = None
+            try:
+                cursor.execute(f"SELECT * FROM {paid_table} WHERE id = %s LIMIT 1", (user_id,))
+                row = cursor.fetchone()
+            except Exception:
+                alt_table = paid_table.replace('_application', '') if paid_table.endswith('_application') else paid_table + '_application'
+                try:
+                    cursor.execute(f"SELECT * FROM {alt_table} WHERE id = %s LIMIT 1", (user_id,))
+                    row = cursor.fetchone()
+                except Exception:
+                    row = None
+
+            if not row:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'error': 'Applicant not found'}), 404
+            
+            # Extract basic info
+            row_map = {k.lower(): v for k, v in (row.items() if isinstance(row, dict) else [])}
+            
+            # Extract USN early to check for duplicates in Selected table
+            usn_val = row_map.get('usn') or row_map.get('roll') or row_map.get('rollno') or f"APP{user_id}"
+            
+            # CHECK IF USN ALREADY EXISTS IN SELECTED TABLE
+            try:
+                cursor.execute("SELECT id, name FROM Selected WHERE usn = %s LIMIT 1", (usn_val,))
+                existing_in_selected = cursor.fetchone()
+                if existing_in_selected:
+                    cursor.close()
+                    conn.close()
+                    existing_name = existing_in_selected[1] if isinstance(existing_in_selected, tuple) else existing_in_selected.get('name', 'Unknown')
+                    app.logger.warning(f"Duplicate USN in Selected: {usn_val}")
+                    return jsonify({
+                        'success': False, 
+                        'error': f'This person is already present in the selected candidates list. USN: {usn_val} | Name: {existing_name}',
+                        'code': 'DUPLICATE_USN'
+                    }), 409
+            except Exception as e:
+                app.logger.warning(f"Error checking for duplicate USN in Selected: {e}")
+            
+            application_id = user_id
+            name_val = row_map.get('name') or row_map.get('full_name') or ''
+            email_val = row_map.get('email') or row_map.get('applicant_email') or ''
+            phone_val = row_map.get('phone') or row_map.get('mobile') or row_map.get('contact_number') or ''
+            year_val = row_map.get('year') or row_map.get('sem') or ''
+            qualification_val = row_map.get('qualification') or ''
+            branch_val = row_map.get('branch') or row_map.get('department') or ''
+            college_val = row_map.get('college') or ''
+            domain_val = row_map.get('domain') or ''
+            project_description_val = row_map.get('project_description') or ''
+            project_name_val = row_map.get('project_document') or row_map.get('project_name') or ''
+            project_title_val = row_map.get('project_title') or project_name_val or ''
+            
+            # Fetch document BLOBs
+            project_blob = None
+            try:
+                cursor.execute(
+                    "SELECT project_document_content FROM paid_document_store WHERE paid_internship_application_id = %s LIMIT 1",
+                    (user_id,)
+                )
+                blob_row = cursor.fetchone()
+                if blob_row:
+                    if isinstance(blob_row, dict):
+                        project_blob = blob_row.get('project_document_content')
+                    else:
+                        project_blob = blob_row[0]
+            except Exception as e:
+                app.logger.warning(f"Could not fetch project BLOB: {e}")
+            
+            # Insert into Selected table
+            try:
+                insert_sql = """INSERT INTO Selected 
+                (application_id, name, email, phone, usn, year, qualification, branch, college, domain, 
+                 project_description, internship_project_name, internship_project_content, project_title,
+                 approved_date, status, completion_date, resend_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                
+                cursor.execute(insert_sql, (
+                    application_id, name_val, email_val, phone_val, usn_val, year_val,
+                    qualification_val, branch_val, college_val, domain_val,
+                    project_description_val, project_name_val, project_blob, project_title_val,
+                    None, 'ongoing', None, 0
+                ))
+                conn.commit()
+                app.logger.info(f"✓ Successfully inserted paid applicant {user_id} ({usn_val}) into Selected")
+                
+                # Delete from paid_internship_application and paid_document_store
+                try:
+                    cursor.execute("DELETE FROM paid_document_store WHERE paid_internship_application_id = %s", (user_id,))
+                    conn.commit()
+                    app.logger.info(f"✓ Deleted documents for paid applicant {user_id}")
+                except Exception as e:
+                    app.logger.warning(f"Could not delete documents: {e}")
+                
+                try:
+                    cursor.execute(f"DELETE FROM {paid_table} WHERE id = %s", (user_id,))
+                    conn.commit()
+                    app.logger.info(f"✓ Deleted paid application for {user_id}")
+                except Exception:
+                    alt_table = paid_table.replace('_application', '') if paid_table.endswith('_application') else paid_table + '_application'
+                    try:
+                        cursor.execute(f"DELETE FROM {alt_table} WHERE id = %s", (user_id,))
+                        conn.commit()
+                        app.logger.info(f"✓ Deleted paid application from {alt_table}")
+                    except Exception as e:
+                        app.logger.warning(f"Could not delete: {e}")
+                
+            except Exception as e:
+                app.logger.error(f"Error inserting paid applicant into Selected: {e}")
+                conn.rollback()
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'error': f'Failed to move to Selected: {e}'}), 500
+            
+            cursor.close()
+            conn.close()
         
-        # If DB insertion/update failed, return explicit error
-        if not approved_inserted:
-            return jsonify({'success': False, 'error': 'Failed to move application to approved_candidates'}), 500
+        except Exception as e:
+            app.logger.exception(f"Error processing paid internship: {e}")
+            return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
     # Send acceptance email
     interview_link = None
@@ -1608,9 +1616,12 @@ def admin_accept(user_id):
     ok = send_accept_email(email, name or '', details=details_for_email, interview_link=interview_link, internship_type=internship_type)
     
     resp = {'success': bool(ok)}
-    if ok:
+    if internship_type == 'free':
         resp['message'] = 'Application moved to approved_candidates and accept email sent'
     else:
+        resp['message'] = 'Application moved to selected candidates and accept email sent'
+    
+    if not ok:
         resp['error'] = 'Failed to send email'
     
     return jsonify(resp), (200 if ok else 500)
@@ -2163,8 +2174,6 @@ def admin_serve_file_inplace(internship_id, file_type):
                 mime = 'image/jpeg'
             elif data.startswith(b'\x89PNG'):
                 mime = 'image/png'
-            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX - serve as octet-stream for Google Docs Viewer
-                mime = 'application/octet-stream'
             # Force inline display and no caching so Google Docs can fetch it
             from flask import make_response
             response = make_response(data)
@@ -2304,8 +2313,6 @@ def admin_serve_file_inplace(internship_id, file_type):
                 mime = 'image/jpeg'
             elif data.startswith(b'\x89PNG'):
                 mime = 'image/png'
-            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX - serve as octet-stream for Google Docs Viewer
-                mime = 'application/octet-stream'
             # Force inline display and no caching so Google Docs can fetch it
             from flask import make_response
             response = make_response(data)

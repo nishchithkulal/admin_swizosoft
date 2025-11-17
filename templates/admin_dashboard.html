@@ -1,130 +1,186 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Swizosoft Admin Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
-</head>
-<body>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+  </head>
+  <body>
     <nav class="navbar">
-        <div class="navbar-container">
-            <div class="navbar-brand">
-                <div class="logo-icon">🎓</div>
-                <h1>Swizosoft</h1>
-            </div>
-            <div class="navbar-menu">
-                <a href="{{ url_for('admin_dashboard') }}" class="nav-link active">Dashboard</a>
-                <a href="{{ url_for('admin_selected') }}" class="nav-link">Selected Candidates</a>
-                <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link">Approved Candidates</a>
-                <a href="{{ url_for('admin_job_description') }}" class="nav-link">Job Description</a>
-                <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link">Logout</a>
-            </div>
+      <div class="navbar-container">
+        <div class="navbar-brand">
+          <div class="logo-icon">🎓</div>
+          <h1>Swizosoft</h1>
         </div>
+        <div class="navbar-menu">
+          <a href="{{ url_for('admin_dashboard') }}" class="nav-link active"
+            >Dashboard</a
+          >
+          <a href="{{ url_for('admin_selected') }}" class="nav-link"
+            >Selected Candidates</a
+          >
+          <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link"
+            >Approved Candidates</a
+          >
+          <a href="{{ url_for('admin_job_description') }}" class="nav-link"
+            >Job Description</a
+          >
+          <a href="{{ url_for('admin_issue_certificate') }}" class="nav-link"
+            >Issue Certificate</a
+          >
+          <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link"
+            >Logout</a
+          >
+        </div>
+      </div>
     </nav>
 
     <div class="dashboard-container">
-        <div class="page-header">
-            <h2>Manage Applications</h2>
-            <p>View and manage internship applicants</p>
+      <div class="page-header">
+        <h2>Manage Applications</h2>
+        <p>View and manage internship applicants</p>
+      </div>
+
+      <!-- Toggle Buttons -->
+      <div class="internship-selector">
+        <button
+          class="selector-btn active"
+          id="freeBtn"
+          onclick="switchInternship('free')"
+        >
+          📗 Free Internship
+        </button>
+        <button
+          class="selector-btn"
+          id="paidBtn"
+          onclick="switchInternship('paid')"
+        >
+          👑 Paid Internship
+        </button>
+      </div>
+
+      <!-- Free Internship Section -->
+      <section id="freeSection" class="internship-section">
+        <div class="section-header">
+          <div>
+            <h3>Free Internship Applicants</h3>
+            <p>
+              Applications received:
+              <span class="count-badge" id="free-count">0</span>
+            </p>
+          </div>
         </div>
-
-        <!-- Toggle Buttons -->
-        <div class="internship-selector">
-            <button class="selector-btn active" id="freeBtn" onclick="switchInternship('free')">
-                📗 Free Internship
-            </button>
-            <button class="selector-btn" id="paidBtn" onclick="switchInternship('paid')">
-                👑 Paid Internship
-            </button>
+        <div class="table-container" id="freeTableBody">
+          <div class="loading-card">
+            <div class="spinner"></div>
+            <p>Loading applications...</p>
+          </div>
         </div>
+      </section>
 
-        <!-- Free Internship Section -->
-        <section id="freeSection" class="internship-section">
-            <div class="section-header">
-                <div>
-                    <h3>Free Internship Applicants</h3>
-                    <p>Applications received: <span class="count-badge" id="free-count">0</span></p>
-                </div>
-            </div>
-            <div class="table-container" id="freeTableBody">
-                <div class="loading-card">
-                    <div class="spinner"></div>
-                    <p>Loading applications...</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- Paid Internship Section -->
-        <section id="paidSection" class="internship-section" style="display: none;">
-            <div class="section-header">
-                <div>
-                    <h3>Paid Internship Applicants</h3>
-                    <p>Applications received: <span class="count-badge" id="paid-count">0</span></p>
-                </div>
-            </div>
-            <div class="table-container" id="paidTableBody">
-                <div class="loading-card">
-                    <div class="spinner"></div>
-                    <p>Loading applications...</p>
-                </div>
-            </div>
-        </section>
+      <!-- Paid Internship Section -->
+      <section
+        id="paidSection"
+        class="internship-section"
+        style="display: none"
+      >
+        <div class="section-header">
+          <div>
+            <h3>Paid Internship Applicants</h3>
+            <p>
+              Applications received:
+              <span class="count-badge" id="paid-count">0</span>
+            </p>
+          </div>
+        </div>
+        <div class="table-container" id="paidTableBody">
+          <div class="loading-card">
+            <div class="spinner"></div>
+            <p>Loading applications...</p>
+          </div>
+        </div>
+      </section>
     </div>
 
     <!-- File Viewer Modal -->
     <div id="fileModal" class="modal">
-        <div class="modal-content">
-            <!-- Modal Header: Fixed at top -->
-            <div class="modal-header">
-                <h3 id="fileTitle">File Viewer</h3>
-                <div class="modal-actions">
-                    <a id="downloadBtn" class="modal-download-btn" style="display:none;">
-                        <span>⬇️</span> Download
-                    </a>
-                    <button class="modal-close" onclick="closeFileModal()">✕</button>
-                </div>
-            </div>
-
-            <!-- File Preview Container: Fills remaining space -->
-            <div id="fileViewerContainer" class="file-viewer-container">
-                <!-- File content will be loaded here -->
-            </div>
+      <div class="modal-content">
+        <!-- Modal Header: Fixed at top -->
+        <div class="modal-header">
+          <h3 id="fileTitle">File Viewer</h3>
+          <div class="modal-actions">
+            <a
+              id="downloadBtn"
+              class="modal-download-btn"
+              style="display: none"
+            >
+              <span>⬇️</span> Download
+            </a>
+            <button class="modal-close" onclick="closeFileModal()">✕</button>
+          </div>
         </div>
+
+        <!-- File Preview Container: Fills remaining space -->
+        <div id="fileViewerContainer" class="file-viewer-container">
+          <!-- File content will be loaded here -->
+        </div>
+      </div>
     </div>
 
     <!-- Rejection Modal -->
     <div id="rejectionModal" class="rejection-modal">
-        <div class="rejection-modal-content">
-            <div class="rejection-modal-header">
-                <h3>⚠️ Reject Application</h3>
-                <span class="rejection-modal-close" onclick="closeRejectionModal()">&times;</span>
-            </div>
-            
-            <!-- Candidate Info Section -->
-            <div id="rejectionCandidateInfo" class="rejection-candidate-info">
-                <h4>Candidate Information</h4>
-                <div class="candidate-details">
-                    <p><strong>Name:</strong> <span id="rejectCandidateName">-</span></p>
-                    <p><strong>USN:</strong> <span id="rejectCandidateUSN">-</span></p>
-                    <p><strong>Email:</strong> <span id="rejectCandidateEmail">-</span></p>
-                </div>
-            </div>
-            
-            <!-- Rejection Reasons Section -->
-            <div>
-                <h4 style="padding: 16px 20px 8px 20px; margin: 0; font-size: 14px; font-weight: 600; color: #333;">Select Rejection Reason</h4>
-                <div id="rejectionReasonsList" class="rejection-reasons-list">
-                    <p>Loading reasons...</p>
-                </div>
-            </div>
-            
-            <div class="rejection-modal-footer">
-                <button onclick="closeRejectionModal()" class="file-btn">Cancel</button>
-            </div>
+      <div class="rejection-modal-content">
+        <div class="rejection-modal-header">
+          <h3>⚠️ Reject Application</h3>
+          <span class="rejection-modal-close" onclick="closeRejectionModal()"
+            >&times;</span
+          >
         </div>
+
+        <!-- Candidate Info Section -->
+        <div id="rejectionCandidateInfo" class="rejection-candidate-info">
+          <h4>Candidate Information</h4>
+          <div class="candidate-details">
+            <p>
+              <strong>Name:</strong> <span id="rejectCandidateName">-</span>
+            </p>
+            <p><strong>USN:</strong> <span id="rejectCandidateUSN">-</span></p>
+            <p>
+              <strong>Email:</strong> <span id="rejectCandidateEmail">-</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- Rejection Reasons Section -->
+        <div>
+          <h4
+            style="
+              padding: 16px 20px 8px 20px;
+              margin: 0;
+              font-size: 14px;
+              font-weight: 600;
+              color: #333;
+            "
+          >
+            Select Rejection Reason
+          </h4>
+          <div id="rejectionReasonsList" class="rejection-reasons-list">
+            <p>Loading reasons...</p>
+          </div>
+        </div>
+
+        <div class="rejection-modal-footer">
+          <button onclick="closeRejectionModal()" class="file-btn">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
-</body>
+  </body>
 </html>

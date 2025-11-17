@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Selected Candidates - Swizosoft</title>
+    <title>Issue Certificate - Swizosoft</title>
     <style>
       * {
         margin: 0;
@@ -75,6 +75,12 @@
         background: rgba(255, 255, 255, 0.1);
       }
       .nav-link.active {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .logout-link {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .logout-link:hover {
         background: rgba(255, 255, 255, 0.2);
       }
       .container {
@@ -161,6 +167,7 @@
         cursor: pointer;
         transition: all 0.2s;
         white-space: nowrap;
+        font-weight: 600;
       }
       .view-btn {
         background: #0066cc;
@@ -168,6 +175,13 @@
       }
       .view-btn:hover {
         background: #0052a3;
+      }
+      .issue-btn {
+        background: #28a745;
+        color: white;
+      }
+      .issue-btn:hover {
+        background: #218838;
       }
       .modal {
         display: none;
@@ -250,10 +264,6 @@
           padding: 0.3rem 0.6rem;
           font-size: 0.75rem;
         }
-        .tab-btn {
-          padding: 0.6rem 1rem;
-          font-size: 0.9rem;
-        }
       }
     </style>
   </head>
@@ -268,7 +278,7 @@
           <a href="{{ url_for('admin_dashboard') }}" class="nav-link"
             >Dashboard</a
           >
-          <a href="{{ url_for('admin_selected') }}" class="nav-link active"
+          <a href="{{ url_for('admin_selected') }}" class="nav-link"
             >Selected Candidates</a
           >
           <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link"
@@ -277,24 +287,31 @@
           <a href="{{ url_for('admin_job_description') }}" class="nav-link"
             >Job Description</a
           >
-          <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
+          <a
+            href="{{ url_for('admin_issue_certificate') }}"
+            class="nav-link active"
+            >Issue Certificate</a
+          >
+          <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link"
+            >Logout</a
+          >
         </div>
       </div>
     </nav>
 
     <div class="container">
       <div class="page-header">
-        <h1>Manage Applications</h1>
-        <p>View and manage internship applicants</p>
+        <h1>Issue Certificate</h1>
+        <p>Issue certificates to completed internship candidates</p>
       </div>
 
       <div class="section-header">
-        <h2>Selected Internship Candidates</h2>
+        <h2>Completed Candidates</h2>
         <span style="color: #666; font-size: 0.9rem"
-          >Total selected:
+          >Total candidates:
           <span
             class="count-badge"
-            id="selected-count"
+            id="candidate-count"
             style="margin-left: 0.5rem"
             >0</span
           ></span
@@ -303,21 +320,22 @@
 
       <div class="table-wrapper">
         <div class="table-responsive">
-          <table id="selectedTable" class="candidates-table">
+          <table id="certificateTable" class="candidates-table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Candidate ID</th>
                 <th>USN</th>
-                <th>Approved Date</th>
-                <th>Completion Date</th>
+                <th>Project Title</th>
+                <th>Project Report</th>
+                <th>Project Description</th>
                 <th>Profile</th>
                 <th>Action</th>
               </tr>
             </thead>
-            <tbody id="selectedTableBody">
+            <tbody id="certificateTableBody">
               <tr>
-                <td colspan="7" style="text-align: center; padding: 2rem">
+                <td colspan="8" style="text-align: center; padding: 2rem">
                   <div class="empty-state" style="padding: 1rem">
                     <div class="empty-state-icon">📋</div>
                     <p>Loading candidates...</p>
@@ -330,19 +348,14 @@
       </div>
     </div>
 
-    <div id="selectedProfileModal" class="modal">
+    <div id="profileModal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
-          <h3 id="selectedProfileTitle">Candidate Profile</h3>
-          <button class="modal-close" onclick="closeSelectedProfile()">
-            ✕
-          </button>
+          <h3 id="profileTitle">Candidate Profile</h3>
+          <button class="modal-close" onclick="closeProfile()">✕</button>
         </div>
         <div class="modal-body">
-          <div
-            id="selectedProfileBody"
-            style="width: 100%; max-width: 1100px"
-          ></div>
+          <div id="profileBody" style="width: 100%; max-width: 1100px"></div>
         </div>
       </div>
     </div>
@@ -373,13 +386,14 @@
         return text.replace(/[&<>"']/g, (m) => map[m]);
       }
 
-      async function loadSelectedCandidates() {
+      async function loadCandidates() {
         try {
-          const response = await fetch("/admin/api/get-selected");
+          // Use new endpoint for completed candidates
+          const response = await fetch("/admin/api/get-completed-candidates");
           const data = await response.json();
 
           if (data.success && data.data && data.data.length > 0) {
-            const tbody = document.getElementById("selectedTableBody");
+            const tbody = document.getElementById("certificateTableBody");
             tbody.innerHTML = "";
 
             data.data.forEach((candidate) => {
@@ -396,71 +410,88 @@
               const usnTd = document.createElement("td");
               usnTd.textContent = candidate.usn || "";
 
-              const approvedDateTd = document.createElement("td");
-              approvedDateTd.textContent = formatDate(
-                candidate.approved_date || "-"
-              );
+              const projectTitleTd = document.createElement("td");
+              projectTitleTd.textContent = candidate.project_title || "-";
 
-              const completionDateTd = document.createElement("td");
-              completionDateTd.textContent = formatDate(
-                candidate.completion_date || "-"
-              );
+              const projectReportTd = document.createElement("td");
+              if (candidate.internship_project_content) {
+                const viewProjectBtn = document.createElement("button");
+                viewProjectBtn.textContent = "View Project";
+                viewProjectBtn.className = "action-btn view-btn";
+                viewProjectBtn.onclick = () =>
+                  viewProjectPDF(
+                    candidate.usn,
+                    candidate.internship_project_content,
+                    candidate.project_title || "Project Document"
+                  );
+                projectReportTd.appendChild(viewProjectBtn);
+              } else {
+                projectReportTd.textContent = "-";
+              }
+
+              const projectDescTd = document.createElement("td");
+              projectDescTd.textContent = candidate.project_description || "-";
+              projectDescTd.style.maxWidth = "250px";
+              projectDescTd.style.overflow = "hidden";
+              projectDescTd.style.textOverflow = "ellipsis";
+              projectDescTd.style.whiteSpace = "nowrap";
 
               const profileTd = document.createElement("td");
-              const btn = document.createElement("button");
-              btn.textContent = "View Profile";
-              btn.className = "action-btn view-btn";
-              btn.onclick = () =>
-                openSelectedProfile(
+              const profileBtn = document.createElement("button");
+              profileBtn.textContent = "View Profile";
+              profileBtn.className = "action-btn view-btn";
+              profileBtn.onclick = () =>
+                openProfile(
                   candidate.usn || candidate.application_id || candidate.user_id
                 );
-              profileTd.appendChild(btn);
+              profileTd.appendChild(profileBtn);
 
               const actionTd = document.createElement("td");
-              const checkBtn = document.createElement("button");
-              checkBtn.textContent = "✓";
-              checkBtn.title = "Send report form and mark as completed";
-              checkBtn.className = "action-btn";
-              checkBtn.style.background = "#28a745";
-              checkBtn.style.color = "white";
-              checkBtn.style.fontSize = "1.2rem";
-              checkBtn.style.padding = "0.4rem 0.6rem";
-              checkBtn.onclick = () =>
-                markAsCompleted(candidate.usn, candidate.email, candidate.name);
-              actionTd.appendChild(checkBtn);
+              const issueBtn = document.createElement("button");
+              issueBtn.textContent = "Issue Certificate";
+              issueBtn.className = "action-btn issue-btn";
+              issueBtn.onclick = () =>
+                issueCertificate(
+                  candidate.usn,
+                  candidate.name,
+                  candidate.candidate_id,
+                  candidate.domain
+                );
+              actionTd.appendChild(issueBtn);
 
               row.appendChild(nameTd);
               row.appendChild(candidateIdTd);
               row.appendChild(usnTd);
-              row.appendChild(approvedDateTd);
-              row.appendChild(completionDateTd);
+              row.appendChild(projectTitleTd);
+              row.appendChild(projectReportTd);
+              row.appendChild(projectDescTd);
               row.appendChild(profileTd);
               row.appendChild(actionTd);
               tbody.appendChild(row);
             });
 
-            document.getElementById("selected-count").textContent =
+            document.getElementById("candidate-count").textContent =
               data.data.length;
           } else {
-            const tbody = document.getElementById("selectedTableBody");
+            const tbody = document.getElementById("certificateTableBody");
             tbody.innerHTML = `
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 2rem;">
+                            <td colspan="8" style="text-align: center; padding: 2rem;">
                                 <div class="empty-state" style="padding: 1rem;">
                                     <div class="empty-state-icon">📭</div>
-                                    <p>No selected candidates yet</p>
+                                    <p>No completed candidates found</p>
                                 </div>
                             </td>
                         </tr>
                     `;
-            document.getElementById("selected-count").textContent = "0";
+            document.getElementById("candidate-count").textContent = "0";
           }
         } catch (error) {
           console.error("Error loading candidates:", error);
-          const tbody = document.getElementById("selectedTableBody");
+          const tbody = document.getElementById("certificateTableBody");
           tbody.innerHTML = `
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 2rem;">
+                        <td colspan="8" style="text-align: center; padding: 2rem;">
                             <div class="empty-state" style="padding: 1rem;">
                                 <div class="empty-state-icon">⚠️</div>
                                 <p>Error loading candidates</p>
@@ -471,13 +502,10 @@
         }
       }
 
-      document.addEventListener("DOMContentLoaded", loadSelectedCandidates);
-      setInterval(loadSelectedCandidates, 30000);
-
-      async function openSelectedProfile(id) {
+      async function openProfile(id) {
         try {
-          const modal = document.getElementById("selectedProfileModal");
-          const body = document.getElementById("selectedProfileBody");
+          const modal = document.getElementById("profileModal");
+          const body = document.getElementById("profileBody");
           body.innerHTML = "<p>Loading...</p>";
           modal.classList.add("show");
 
@@ -497,6 +525,7 @@
                 k
               )}</th><td style="padding:8px">${escapeHtml(v || "-")}</td></tr>`
             );
+
           add("Name", c.name);
           add("USN", c.usn);
           add("Email", c.email);
@@ -507,9 +536,7 @@
           add("College", c.college);
           add("Domain", c.domain);
           add("Application ID", c.application_id);
-          add("User ID", c.user_id);
           add("Approved Date", formatDate(c.approved_date));
-          add("Completion Date", formatDate(c.completion_date));
 
           const html = `<div style="width:100%"><div style="overflow:auto"><table style="width:100%;border-collapse:collapse">${rows.join(
             ""
@@ -517,68 +544,72 @@
           body.innerHTML = html;
         } catch (e) {
           document.getElementById(
-            "selectedProfileBody"
+            "profileBody"
           ).innerHTML = `<div class="empty-state"><p>Error: ${escapeHtml(
             e.message
           )}</p></div>`;
         }
       }
 
-      function closeSelectedProfile() {
-        document
-          .getElementById("selectedProfileModal")
-          .classList.remove("show");
+      function closeProfile() {
+        document.getElementById("profileModal").classList.remove("show");
       }
 
-      async function markAsCompleted(usn, email, name) {
+      function issueCertificate(usn, name, candidateId, usnCode) {
+        alert(
+          `Certificate issuance feature coming soon!\n\nCandidate: ${name}\nUSN: ${usn}\nCandidate ID: ${candidateId}`
+        );
+        // TODO: Implement certificate generation and download functionality
+      }
+
+      function viewProjectPDF(usn, projectContent, projectTitle) {
         try {
-          const confirmed = confirm(
-            `Send report form email to ${name} (${usn}) and mark as completed?`
-          );
-          if (!confirmed) return;
+          const modal = document.getElementById("profileModal");
+          const body = document.getElementById("profileBody");
 
-          // Send email with report form link
-          const response = await fetch("/admin/api/send-report-form-email", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              usn: usn,
-              email: email,
-              name: name,
-            }),
-          });
+          // Create PDF viewer
+          let pdfHtml = `
+            <div style="width: 100%; height: 100%; display: flex; flex-direction: column;">
+              <div style="padding: 1rem; background: #f8f9fa; border-bottom: 1px solid #ddd;">
+                <h3 style="margin: 0;">${escapeHtml(projectTitle)}</h3>
+              </div>
+              <div style="flex: 1; display: flex; justify-content: center; align-items: center; background: #fff;">
+          `;
 
-          const result = await response.json();
-
-          if (result.success) {
-            alert(`✓ Email sent to ${email} and status updated to completed!`);
-            loadSelectedCandidates(); // Refresh the table
+          // Check if it's base64 encoded
+          if (projectContent && projectContent.length > 0) {
+            // Assume it's base64 encoded
+            const dataUrl = "data:application/pdf;base64," + projectContent;
+            pdfHtml += `
+              <iframe 
+                src="${dataUrl}" 
+                style="width: 100%; height: 100%; border: none; border-radius: 4px;"
+                title="Project PDF"
+              ></iframe>
+            `;
           } else {
-            alert(`Error: ${result.error || "Failed to send email"}`);
+            pdfHtml += `<div style="text-align: center; color: #999;">No project document available</div>`;
           }
-        } catch (error) {
-          console.error("Error:", error);
-          alert("Error sending email. Please try again.");
+
+          pdfHtml += `
+              </div>
+            </div>
+          `;
+
+          body.innerHTML = pdfHtml;
+          modal.classList.add("show");
+        } catch (e) {
+          alert(`Error: ${e.message}`);
         }
       }
 
       window.onclick = (e) => {
-        if (e.target === document.getElementById("selectedProfileModal"))
-          closeSelectedProfile();
+        if (e.target === document.getElementById("profileModal"))
+          closeProfile();
       };
 
-      function closeSelectedProfile() {
-        document
-          .getElementById("selectedProfileModal")
-          .classList.remove("show");
-      }
-
-      window.onclick = (e) => {
-        if (e.target === document.getElementById("selectedProfileModal"))
-          closeSelectedProfile();
-      };
+      document.addEventListener("DOMContentLoaded", loadCandidates);
+      setInterval(loadCandidates, 30000);
     </script>
   </body>
 </html>
