@@ -74,6 +74,4 @@ class ApprovedCandidate(db.Model):
             'id_proof_name': self.id_proof_name,
             'id_proof_content': self.id_proof_content,
             'job_description': self.job_description,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
