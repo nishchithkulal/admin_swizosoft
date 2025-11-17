@@ -6,6 +6,8 @@ import io
 from functools import wraps
 import json
 import base64
+import os
+from datetime import datetime
 
 # Minimal Admin-only Flask app
 app = Flask(__name__)
@@ -2631,89 +2633,241 @@ def admin_job_description():
     return render_template('admin_job_description.html', rows=rows)
 
 
-# Check what table name is resolved (with error handling and timeout)
-try:
-    conn = get_db()
-    cur = conn.cursor()
+# ==================== CERTIFICATE GENERATION (Using SWIZ_CERTI) ====================
+
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+
+# Certificate configuration pointing to SWIZ_CERTI folder
+CERT_BASE_PATH = os.path.join(os.path.dirname(__file__), 'SWIZ CERTI', 'certificate-generator')
+CERTIFICATE_TEMPLATE_PATH = os.path.join(CERT_BASE_PATH, 'certificate', 'certificate_template.pdf')
+GENERATED_CERTS_PATH = os.path.join(CERT_BASE_PATH, 'generated')
+SERIAL_FILE = os.path.join(CERT_BASE_PATH, 'serial.json')
+
+def get_monthwise_serial(month):
+    """Get month-wise serial number for certificate (from SWIZ_CERTI)"""
+    # Ensure serial.json directory exists
+    os.makedirs(CERT_BASE_PATH, exist_ok=True)
     
-    table = get_resolved_table('free_internship')
-    print(f"Using table: {table}")
+    # If serial.json doesn't exist, create it
+    if not os.path.exists(SERIAL_FILE):
+        data = {"month": month, "serial": 0}
+        with open(SERIAL_FILE, "w") as f:
+            json.dump(data, f)
     
-    # Get a sample row with all file columns
+    # Load file data
+    with open(SERIAL_FILE, "r") as f:
+        data = json.load(f)
+    
+    # Reset if new month
+    if data.get("month") != month:
+        data["month"] = month
+        data["serial"] = 1
+    else:
+        data["serial"] = data.get("serial", 0) + 1
+    
+    # Save back to file
+    with open(SERIAL_FILE, "w") as f:
+        json.dump(data, f)
+    
+    # Return formatted like 001, 002, 003
+    return f"{data['serial']:03}"
+
+
+def generate_certificate_pdf(candidate_name):
+    """Generate a certificate PDF using SWIZ_CERTI certificate template"""
+    
+    # Ensure output directory exists
+    os.makedirs(GENERATED_CERTS_PATH, exist_ok=True)
+    
+    # Check if template exists
+    if not os.path.exists(CERTIFICATE_TEMPLATE_PATH):
+        raise FileNotFoundError(f"Certificate template not found at: {CERTIFICATE_TEMPLATE_PATH}")
+    
+    # Date & Serial Logic
+    now = datetime.now()
+    year = now.year
+    month = now.strftime("%b").upper()  # JAN, FEB, MAR...
+    serial_no = get_monthwise_serial(month)
+    
+    # Certificate ID (display format)
+    certificate_id = f"SZS_CERT_{year}_{month}_{serial_no}"
+    
+    # File-safe name for saving
+    file_name = certificate_id.replace("/", "_") + ".pdf"
+    output_file = os.path.join(GENERATED_CERTS_PATH, file_name)
+    
     try:
-        cur.execute(f"SELECT id, name, resume, id_proof, project_document FROM {table} LIMIT 1")
-        row = cur.fetchone()
-        print(f"Sample row: {row}")
-        print(f"Resume type: {type(row['resume']) if row else 'No data'}")
-        print(f"Resume value: {row['resume'] if row else 'No data'}")
-    except Exception as e:
-        print(f"Warning: Could not fetch sample row: {e}")
+        # PDF Generation (using SWIZ_CERTI logic)
+        # Open template PDF with proper file handling
+        with open(CERTIFICATE_TEMPLATE_PATH, "rb") as template_file:
+            existing_pdf = PdfReader(template_file)
+            page = existing_pdf.pages[0]
+            
+            media = page.mediabox
+            width = float(media.width)
+            height = float(media.height)
+            
+            # Create text overlay with ReportLab
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=(width, height))
+            
+            # Set Font and draw candidate name
+            can.setFont("Times-Italic", 33)
+            
+            # Center name
+            text_width = can.stringWidth(candidate_name, "Times-Italic", 33)
+            x_position = (width - text_width) / 2
+            y_position = height * 0.46  # Center vertically
+            
+            can.drawString(x_position, y_position, candidate_name)
+            can.save()
+            
+            # Merge text overlay with template
+            packet.seek(0)
+            name_pdf = PdfReader(packet)
+            
+            writer = PdfWriter()
+            page.merge_page(name_pdf.pages[0])
+            writer.add_page(page)
+            
+            # Write to file in SWIZ_CERTI folder
+            with open(output_file, "wb") as f:
+                writer.write(f)
     
-    cur.close()
-    conn.close()
-except Exception as e:
-    print(f"Warning: Database diagnostic check failed (this is non-fatal): {e}")
-    import traceback
-    traceback.print_exc()
+    except Exception as e:
+        raise Exception(f"PDF generation error: {str(e)}")
+    
+    # Also copy the generated certificate back to the main project folder
+    try:
+        project_generated_dir = os.path.join(os.path.dirname(__file__), 'generated_certificates')
+        os.makedirs(project_generated_dir, exist_ok=True)
+        copied_path = os.path.join(project_generated_dir, os.path.basename(output_file))
+        # Use shutil to preserve file
+        import shutil
+        shutil.copy2(output_file, copied_path)
+    except Exception as e:
+        # Log but don't fail: original file in SWIZ_CERTI exists
+        app.logger.warning(f"Failed to copy generated certificate to project folder: {e}")
+        copied_path = None
+
+    # Return file path in SWIZ_CERTI, certificate ID and optional copied path
+    return output_file, certificate_id, copied_path
+
+
+@app.route('/admin/api/generate-certificate/<candidate_id>', methods=['POST'])
+@login_required
+def generate_certificate(candidate_id):
+    """Generate certificate for a candidate using SWIZ_CERTI.
+
+    Accepts numeric or string identifiers. Tries multiple candidate fields
+    to locate the ApprovedCandidate record to avoid 404s when frontend
+    passes non-numeric IDs.
+    """
+    try:
+        # Lookup candidate in Selected table (primary source for certificate details)
+        conn = get_db()
+        cursor = conn.cursor()
+        row = None
+        try:
+            # If numeric, try application_id or user_id
+            if str(candidate_id).isdigit():
+                cursor.execute('SELECT * FROM `Selected` WHERE application_id = %s LIMIT 1', (int(candidate_id),))
+                row = cursor.fetchone()
+                if not row:
+                    cursor.execute('SELECT * FROM `Selected` WHERE user_id = %s LIMIT 1', (int(candidate_id),))
+                    row = cursor.fetchone()
+
+            # If not found, try candidate_id column and USN
+            if not row:
+                try:
+                    cursor.execute('SELECT * FROM `Selected` WHERE candidate_id = %s LIMIT 1', (candidate_id,))
+                    row = cursor.fetchone()
+                except Exception:
+                    row = row
+            if not row:
+                try:
+                    cursor.execute('SELECT * FROM `Selected` WHERE usn = %s LIMIT 1', (candidate_id,))
+                    row = cursor.fetchone()
+                except Exception:
+                    row = row
+        finally:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        if not row:
+            app.logger.warning(f"Selected lookup failed for identifier: {candidate_id}")
+            return jsonify({'success': False, 'error': 'Candidate not found in Selected table'}), 404
+
+        # Extract name from Selected row
+        candidate_name = (row.get('name') or '').strip().upper()
+        if not candidate_name:
+            return jsonify({'success': False, 'error': 'Candidate name not found'}), 400
+
+        # Generate certificate using SWIZ_CERTI logic
+        cert_file_path, certificate_id, copied_path = generate_certificate_pdf(candidate_name)
+        app.logger.info(f"Generated certificate {certificate_id} at {cert_file_path}; copied to {copied_path}")
+
+        # Read the generated PDF as base64
+        with open(cert_file_path, 'rb') as f:
+            pdf_data = base64.b64encode(f.read()).decode('utf-8')
+
+        return jsonify({
+            'success': True,
+            'certificate_id': certificate_id,
+            'pdf_data': pdf_data,
+            'filename': f"{certificate_id}.pdf"
+        })
+
+    except FileNotFoundError as e:
+        app.logger.error(f"[CERT ERROR] Template not found: {str(e)}")
+        return jsonify({'success': False, 'error': f'Template not found: {str(e)}'}), 500
+    except Exception as e:
+        app.logger.exception(f"[CERT ERROR] {str(e)}")
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/admin/api/download-certificate/<certificate_id>', methods=['GET'])
+@login_required
+def download_certificate(certificate_id):
+    """Download a generated certificate from SWIZ_CERTI"""
+    try:
+        file_name = certificate_id.replace("/", "_") + ".pdf"
+        cert_file_path = os.path.join(GENERATED_CERTS_PATH, file_name)
+        
+        if not os.path.exists(cert_file_path):
+            # Try project-level copy
+            project_copy = os.path.join(os.path.dirname(__file__), 'generated_certificates', file_name)
+            if os.path.exists(project_copy):
+                cert_file_path = project_copy
+            else:
+                app.logger.warning(f"Certificate not found at {cert_file_path} and no project copy at {project_copy}")
+                return jsonify({'success': False, 'error': 'Certificate not found'}), 404
+        
+        return send_file(
+            cert_file_path,
+            as_attachment=True,
+            download_name=f"{certificate_id}.pdf",
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        app.logger.error(f"Certificate download failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== END CERTIFICATE GENERATION ====================
+
 
 if __name__ == '__main__':
     # Ensure a secret key exists for session support
     if not app.secret_key:
         app.secret_key = app.config.get('SECRET_KEY') or 'dev-secret-change-me'
-    # Diagnostic prints to help debugging when the process exits immediately
-    try:
-        @app.before_first_request
-        def ensure_approved_candidates_job_description_column():
-            """Best-effort: ensure `approved_candidates.job_description` exists so SQLAlchemy queries don't fail.
-               Runs once before the first request. Non-fatal on error.
-            """
-            conn = None
-            cur = None
-            try:
-                conn = get_db()
-                cur = conn.cursor()
-                db_name = app.config.get('MYSQL_DB')
-                cur.execute("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema=%s AND table_name=%s", (db_name, 'approved_candidates'))
-                cols = [r['COLUMN_NAME'] for r in cur.fetchall()]
-                if 'job_description' not in cols:
-                    try:
-                        cur.execute("ALTER TABLE approved_candidates ADD COLUMN job_description TEXT")
-                        conn.commit()
-                        print('Added approved_candidates.job_description column')
-                    except Exception:
-                        # If ALTER fails, log and continue; the app will handle missing column gracefully later
-                        print('Could not add approved_candidates.job_description column:', e)
-            except Exception as e:
-                print('Error during schema ensure step:', e)
-            finally:
-                try:
-                    if cur:
-                        cur.close()
-                except Exception:
-                    pass
-                try:
-                    if conn:
-                        conn.close()
-                except Exception:
-                    pass
-        import sys, platform, os
-        print('Starting admin_app.py', file=sys.stderr)
-        print('Python executable:', sys.executable, file=sys.stderr)
-        print('Python version:', sys.version.replace('\n', ' '), file=sys.stderr)
-        print('CWD:', os.getcwd(), file=sys.stderr)
-        print('App debug:', app.debug, file=sys.stderr)
-        print('App secret set:', bool(app.secret_key), file=sys.stderr)
-    except Exception:
-        pass
-
-    # Show the URL and run the dev server without the reloader so the process
-    # you start is the one serving requests (avoids parent process exit visible
-    # to some shells when the reloader spawns a child).
-    try:
-        print('Server listening at http://127.0.0.1:5000', file=sys.stderr)
-    except Exception:
-        pass
-    # Disable the interactive debugger resources in production/dev-run by forcing debug=False
-    # If you need debug features, set them explicitly via config and be aware
-    # that the Werkzeug debugger will serve extra resources (seen as __debugger__ requests).
+    
+    # Run the Flask development server
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)

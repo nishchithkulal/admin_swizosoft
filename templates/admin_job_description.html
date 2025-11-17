@@ -1,205 +1,377 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Job Description - Admin</title>
-    <link
-      rel="stylesheet"
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Job Descriptions - Admin</title>
-          <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
-          <style>
-            .jd-panel {
-              max-width: 1100px;
-              margin: 32px auto;
-              background: #fff;
-              padding: 20px;
-              border-radius: 8px;
-              box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
-            }
-            .domains-row {
-              display: flex;
-              gap: 10px;
-              flex-wrap: wrap;
-              margin-bottom: 18px;
-            }
-            .domain-btn {
-              background: #667eea;
-              color: white;
-              border: none;
-              padding: 8px 12px;
-              border-radius: 6px;
-              cursor: pointer;
-              font-weight: 600;
-              white-space: nowrap;
-            }
-            .domain-btn.secondary {
-              background: #f1f3f8;
-              color: #333;
-              border: 1px solid #e6e9f2;
-            }
-            .jd-display {
-              border: 1px solid #eee;
-              padding: 16px;
-              border-radius: 6px;
-              min-height: 160px;
-              background: #fafafa;
-              white-space: pre-wrap;
-            }
-            .modal {
-              display: none;
-              position: fixed;
-              left: 0;
-              top: 0;
-              width: 100%;
-              height: 100%;
-              background: rgba(0,0,0,0.5);
-              align-items: center;
-              justify-content: center;
-              z-index: 1200;
-            }
-            .modal.show { display: flex; }
-            .modal-card {
-              background: white;
-              width: 90%;
-              max-width: 900px;
-              border-radius: 8px;
-              overflow: hidden;
-            }
-            .modal-header { padding: 14px 18px; background: linear-gradient(90deg,#667eea,#764ba2); color: white; display:flex; justify-content:space-between; align-items:center }
-            .modal-body { padding: 18px; }
-            textarea#jd-text { width:100%; min-height: 300px; padding:12px; border-radius:6px; border:1px solid #ddd; box-sizing:border-box; resize:vertical }
-            .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
-          </style>
-        </head>
-        <body>
-          <nav class="navbar">
-            <div class="navbar-container">
-              <div class="navbar-brand">
-                <div class="logo-icon">🎓</div>
-                <h1>Swizosoft</h1>
-              </div>
-              <div class="navbar-menu">
-                <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Dashboard</a>
-                <a href="{{ url_for('admin_selected') }}" class="nav-link">Selected Candidates</a>
-                <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link">Approved Candidates</a>
-                <a href="{{ url_for('admin_job_description') }}" class="nav-link active">Job Description</a>
-                <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link">Logout</a>
-              </div>
-            </div>
-          </nav>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Descriptions - Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
+  <style>
+    .jd-panel {
+      max-width: 1100px;
+      margin: 32px auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+    }
+    .domains-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .domain-btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .domain-btn:hover {
+      background: #5568d3;
+    }
+    .domain-btn.active {
+      background: #764ba2;
+    }
+    .domain-btn.secondary {
+      background: #f1f3f8;
+      color: #333;
+      border: 1px solid #e6e9f2;
+    }
+    .domain-btn.secondary:hover {
+      background: #e8ecf5;
+    }
+    .jd-display {
+      border: 1px solid #eee;
+      padding: 16px;
+      border-radius: 6px;
+      min-height: 160px;
+      background: #fafafa;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+    }
+    .modal.show { 
+      display: flex; 
+    }
+    .modal-card {
+      background: white;
+      width: 90%;
+      max-width: 900px;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .modal-header { 
+      padding: 14px 18px; 
+      background: linear-gradient(90deg,#667eea,#764ba2); 
+      color: white; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+    }
+    .modal-header strong {
+      font-size: 16px;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-close:hover {
+      opacity: 0.8;
+    }
+    .modal-body { 
+      padding: 18px; 
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 600;
+      color: #333;
+    }
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    #jd-text {
+      min-height: 300px;
+      resize: vertical;
+    }
+    .modal-actions { 
+      display: flex; 
+      gap: 10px; 
+      justify-content: flex-end; 
+      margin-top: 16px;
+    }
+    .file-btn {
+      padding: 10px 16px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .file-btn:hover {
+      background: #5568d3;
+    }
+    .file-btn.secondary {
+      background: #f1f3f8;
+      color: #333;
+      border: 1px solid #e6e9f2;
+    }
+    .file-btn.secondary:hover {
+      background: #e8ecf5;
+    }
+    .action-buttons {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-brand">
+        <div class="logo-icon">🎓</div>
+        <h1>Swizosoft</h1>
+      </div>
+      <div class="navbar-menu">
+        <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Dashboard</a>
+        <a href="{{ url_for('admin_selected') }}" class="nav-link">Selected Candidates</a>
+        <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link">Approved Candidates</a>
+        <a href="{{ url_for('admin_job_description') }}" class="nav-link active">Job Description</a>
+        <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link">Logout</a>
+      </div>
+    </div>
+  </nav>
 
-          <div class="dashboard-container">
-            <div class="jd-panel">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
-                <h3 style="margin:0">Job Descriptions</h3>
-                <div>
-                  <button class="domain-btn secondary" onclick="openEditor()">Add New</button>
-                </div>
-              </div>
+  <div class="dashboard-container">
+    <div class="jd-panel">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="margin: 0;">Job Descriptions</h3>
+        <button class="domain-btn secondary" onclick="openEditor(false)">+ Add New</button>
+      </div>
 
-              <div class="domains-row" id="domainsRow">
-                {% for row in rows %}
-                  <button class="domain-btn" data-id="{{ row['id'] }}" data-domain="{{ row['domain'] or ''|e }}" data-desc="{{ row['description']|e }}" onclick="openViewer(this)">{{ row['domain'] or ('General '+row['id']|string) }}</button>
-                {% else %}
-                  <div style="color:#666">No job descriptions found. Click "Add New" to create one.</div>
-                {% endfor %}
-              </div>
+      <div class="domains-row" id="domainsRow">
+        {% if rows %}
+          {% for row in rows %}
+            <button class="domain-btn" data-id="{{ row['id'] }}" data-domain="{{ row['domain'] or ''|e }}" data-desc="{{ row['description']|e }}" onclick="openViewer(this)">{{ row['domain'] or ('General '+row['id']|string) }}</button>
+          {% endfor %}
+        {% else %}
+          <div style="color: #666; padding: 8px;">No job descriptions found. Click "Add New" to create one.</div>
+        {% endif %}
+      </div>
 
-              <div>
-                <h4 style="margin:0 0 8px 0">Preview</h4>
-                <div id="jdPreview" class="jd-display">Select a domain to view its job description.</div>
-                <div style="margin-top:12px; display:flex; gap:10px">
-                  <button id="editBtn" class="file-btn" style="display:none" onclick="openEditor(true)">Edit</button>
-                  <button id="deleteBtn" class="file-btn" style="display:none; background:#ff6b6b" onclick="confirmDelete()">Delete</button>
-                </div>
-              </div>
-            </div>
+      <div>
+        <h4 style="margin: 0 0 8px 0;">Preview</h4>
+        <div id="jdPreview" class="jd-display">Select a domain to view its job description.</div>
+        <div class="action-buttons">
+          <button id="editBtn" class="file-btn" style="display: none;" onclick="openEditor(true)">Edit</button>
+          <button id="deleteBtn" class="file-btn" style="display: none; background: #ff6b6b;" onclick="confirmDelete()">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for add/edit -->
+  <div id="jdModal" class="modal" role="dialog">
+    <div class="modal-card">
+      <div class="modal-header">
+        <strong id="modalTitle">Edit Job Description</strong>
+        <button type="button" class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <form id="jdForm" method="post" action="{{ url_for('admin_job_description') }}">
+          <input type="hidden" name="action" id="formAction" value="save" />
+          <input type="hidden" name="id" id="formId" />
+          
+          <div class="form-group">
+            <label for="formDomain">Domain Name</label>
+            <input type="text" id="formDomain" name="domain" placeholder="e.g., Full Stack Developer" />
           </div>
-
-          <!-- Modal for add/edit -->
-          <div id="jdModal" class="modal" role="dialog">
-            <div class="modal-card">
-              <div class="modal-header">
-                <strong id="modalTitle">Edit Job Description</strong>
-                <button class="modal-close" onclick="closeModal()">×</button>
-              </div>
-              <div class="modal-body">
-                <form id="jdForm" method="post">
-                  <input type="hidden" name="action" id="formAction" value="save" />
-                  <input type="hidden" name="id" id="formId" />
-                  <div style="margin-bottom:8px">
-                    <label>Domain (short name)</label><br>
-                    <input type="text" id="formDomain" name="domain" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ddd" />
-                  </div>
-                  <div>
-                    <label>Job Description</label>
-                    <textarea id="jd-text" name="description" placeholder="Enter job description here..."></textarea>
-                  </div>
-                  <div class="modal-actions">
-                    <button type="button" class="file-btn" onclick="submitForm('save')">Save</button>
-                    <button type="button" class="file-btn" onclick="submitForm('add')">Add</button>
-                    <button type="button" class="file-btn secondary" onclick="closeModal()">Cancel</button>
-                  </div>
-                </form>
-              </div>
-            </div>
+          
+          <div class="form-group">
+            <label for="jd-text">Job Description</label>
+            <textarea id="jd-text" name="description" placeholder="Enter job description here..."></textarea>
           </div>
+          
+          <div class="modal-actions">
+            <button type="button" class="file-btn" onclick="submitForm('save')">Save</button>
+            <button type="button" class="file-btn" onclick="submitForm('add')">Add</button>
+            <button type="button" class="file-btn secondary" onclick="closeModal()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 
-          <script>
-            var current = {id: null, domain: null, description: null};
+  <script>
+    var current = { id: null, domain: null, description: null };
 
-            function openViewer(btn) {
-              // btn can be element or event
-              var el = btn instanceof Element ? btn : this;
-              var id = el.getAttribute('data-id');
-              var domain = el.getAttribute('data-domain') || '';
-              var desc = el.getAttribute('data-desc') || '';
-              current.id = id; current.domain = domain; current.description = desc;
-              document.getElementById('jdPreview').textContent = desc || '(No description)';
-              document.getElementById('editBtn').style.display = 'inline-block';
-              document.getElementById('deleteBtn').style.display = 'inline-block';
-            }
+    function openViewer(btn) {
+      var el = btn instanceof Element ? btn : this;
+      var id = el.getAttribute('data-id');
+      var domain = el.getAttribute('data-domain') || '';
+      var desc = el.getAttribute('data-desc') || '';
+      
+      current.id = id;
+      current.domain = domain;
+      current.description = desc;
+      
+      // Update preview
+      document.getElementById('jdPreview').textContent = desc || '(No description)';
+      
+      // Show buttons
+      document.getElementById('editBtn').style.display = 'inline-block';
+      document.getElementById('deleteBtn').style.display = 'inline-block';
+      
+      // Update active button styling
+      document.querySelectorAll('.domain-btn:not(.secondary)').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      el.classList.add('active');
+    }
 
-            function openEditor(fromViewer) {
-              document.getElementById('jdModal').classList.add('show');
-              document.getElementById('modalTitle').textContent = fromViewer ? 'Edit Job Description' : 'Add Job Description';
-              document.getElementById('formAction').value = fromViewer ? 'save' : 'add';
-              if (fromViewer && current.id) {
-                document.getElementById('formId').value = current.id;
-                document.getElementById('formDomain').value = current.domain || '';
-                document.getElementById('jd-text').value = current.description || '';
-              } else {
-                document.getElementById('formId').value = '';
-                document.getElementById('formDomain').value = '';
-                document.getElementById('jd-text').value = '';
-              }
-            }
+    function openEditor(fromViewer) {
+      document.getElementById('jdModal').classList.add('show');
+      
+      if (fromViewer) {
+        document.getElementById('modalTitle').textContent = 'Edit Job Description';
+        document.getElementById('formAction').value = 'save';
+        if (current.id) {
+          document.getElementById('formId').value = current.id;
+          document.getElementById('formDomain').value = current.domain || '';
+          document.getElementById('jd-text').value = current.description || '';
+        }
+      } else {
+        document.getElementById('modalTitle').textContent = 'Add Job Description';
+        document.getElementById('formAction').value = 'add';
+        document.getElementById('formId').value = '';
+        document.getElementById('formDomain').value = '';
+        document.getElementById('jd-text').value = '';
+      }
+      
+      // Focus on domain input
+      setTimeout(() => document.getElementById('formDomain').focus(), 100);
+    }
 
-            function closeModal() {
-              document.getElementById('jdModal').classList.remove('show');
-            }
+    function closeModal() {
+      document.getElementById('jdModal').classList.remove('show');
+    }
 
-            function submitForm(action) {
-              document.getElementById('formAction').value = action;
-              document.getElementById('jdForm').submit();
-            }
+    function submitForm(action) {
+      var domain = document.getElementById('formDomain').value.trim();
+      var description = document.getElementById('jd-text').value.trim();
+      
+      // Validation
+      if (!domain && action === 'add') {
+        alert('Please enter a domain name');
+        return;
+      }
+      
+      if (!description) {
+        alert('Please enter a job description');
+        return;
+      }
+      
+      document.getElementById('formAction').value = action;
+      document.getElementById('jdForm').submit();
+    }
 
-            function confirmDelete() {
-              if (!current.id && !current.domain) { alert('No domain selected'); return; }
-              if (!confirm('Delete this job description? This cannot be undone.')) return;
-              // submit a small form
-              var f = document.createElement('form');
-              f.method = 'post';
-              var a = document.createElement('input'); a.type = 'hidden'; a.name = 'action'; a.value = 'delete'; f.appendChild(a);
-              if (current.id) { var b = document.createElement('input'); b.type='hidden'; b.name='id'; b.value=current.id; f.appendChild(b);} else if (current.domain) { var c = document.createElement('input'); c.type='hidden'; c.name='domain'; c.value=current.domain; f.appendChild(c); }
-              document.body.appendChild(f); f.submit();
-            }
-          </script>
-        </body>
-      </html>
+    function confirmDelete() {
+      if (!current.id && !current.domain) {
+        alert('No domain selected');
+        return;
+      }
+      
+      if (!confirm('Delete this job description? This action cannot be undone.')) {
+        return;
+      }
+      
+      // Create hidden form for delete
+      var form = document.createElement('form');
+      form.method = 'post';
+      form.action = '{{ url_for("admin_job_description") }}';
+      
+      var actionInput = document.createElement('input');
+      actionInput.type = 'hidden';
+      actionInput.name = 'action';
+      actionInput.value = 'delete';
+      form.appendChild(actionInput);
+      
+      if (current.id) {
+        var idInput = document.createElement('input');
+        idInput.type = 'hidden';
+        idInput.name = 'id';
+        idInput.value = current.id;
+        form.appendChild(idInput);
+      } else if (current.domain) {
+        var domainInput = document.createElement('input');
+        domainInput.type = 'hidden';
+        domainInput.name = 'domain';
+        domainInput.value = current.domain;
+        form.appendChild(domainInput);
+      }
+      
+      document.body.appendChild(form);
+      form.submit();
+    }
+
+    // Close modal when clicking outside of it
+    document.getElementById('jdModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeModal();
+      }
+    });
+
+    // Allow Escape key to close modal
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeModal();
+      }
+    });
+  </script>
+</body>
+</html>

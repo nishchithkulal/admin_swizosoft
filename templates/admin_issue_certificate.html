@@ -454,13 +454,17 @@
               const issueBtn = document.createElement("button");
               issueBtn.textContent = "Issue Certificate";
               issueBtn.className = "action-btn issue-btn";
-              issueBtn.onclick = () =>
+              issueBtn.onclick = () => {
+                // Pass a reliable numeric id: prefer user_id, then application_id, then candidate_id
+                const cid = candidate.user_id || candidate.application_id || candidate.candidate_id || candidate.id;
+                console.log('Issuing certificate for candidate', cid, candidate.name);
                 issueCertificate(
                   candidate.usn,
                   candidate.name,
-                  candidate.candidate_id,
+                  cid,
                   candidate.domain
                 );
+              };
               actionTd.appendChild(issueBtn);
 
               row.appendChild(nameTd);
@@ -560,28 +564,75 @@
         document.getElementById("profileModal").classList.remove("show");
       }
 
-      function issueCertificate(usn, name, candidateId, usnCode) {
-        alert(
-          `Certificate issuance feature coming soon!\n\nCandidate: ${name}\nUSN: ${usn}\nCandidate ID: ${candidateId}`
-        );
-        // TODO: Implement certificate generation and download functionality
+      async function issueCertificate(usn, name, candidateId, usnCode) {
+        try {
+          // Show loading in profile modal
+          const modal = document.getElementById("profileModal");
+          const body = document.getElementById("profileBody");
+          body.innerHTML = `<div style="padding:2rem;text-align:center;">Generating certificate for <strong>${escapeHtml(
+            name
+          )}</strong>...<br/><small>Please wait</small></div>`;
+          modal.classList.add("show");
+
+          const resp = await fetch(`/admin/api/generate-certificate/${candidateId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || `Server returned ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          if (!data.success) {
+            throw new Error(data.error || "Certificate generation failed");
+          }
+
+          // Use existing PDF viewer to show the returned base64 PDF
+          // viewProjectPDF expects (usn, projectContent(base64), projectTitle)
+          viewProjectPDF(usn, data.pdf_data, `Certificate - ${data.certificate_id}`);
+        } catch (e) {
+          // Show error inside the modal
+          const modal = document.getElementById("profileModal");
+          const body = document.getElementById("profileBody");
+          body.innerHTML = `<div class="empty-state"><p style="color:#d32f2f;">Error generating certificate: ${escapeHtml(
+            e.message || String(e)
+          )}</p></div>`;
+          modal.classList.add("show");
+        }
+      }
+
+      // Holds the current certificate id when a certificate is displayed
+      let currentCertificateId = null;
+
+      function downloadCertificateById(certificateId) {
+        if (!certificateId) return alert('No certificate available for download');
+        // Trigger a navigation to the download endpoint which will prompt file download
+        const url = `/admin/api/download-certificate/${encodeURIComponent(certificateId)}`;
+        window.location.href = url;
       }
 
       function viewProjectPDF(usn, projectContent, projectTitle) {
         try {
           const modal = document.getElementById("profileModal");
           const body = document.getElementById("profileBody");
-
           // Create PDF viewer
           let pdfHtml = `
             <div style="width: 100%; height: 100%; display: flex; flex-direction: column;">
-              <div style="padding: 1rem; background: #f8f9fa; border-bottom: 1px solid #ddd;">
+              <div style="padding: 1rem; background: #f8f9fa; border-bottom: 1px solid #ddd; display:flex; align-items:center; justify-content:space-between;">
                 <h3 style="margin: 0;">${escapeHtml(projectTitle)}</h3>
+                <div>
+                  <button id="downloadPdfBtn" style="margin-left:8px;padding:0.4rem 0.6rem;background:#0066cc;color:#fff;border-radius:4px;border:none;cursor:pointer;">Download</button>
+                </div>
               </div>
               <div style="flex: 1; display: flex; justify-content: center; align-items: center; background: #fff;">
           `;
 
           // Check if it's base64 encoded
+          // Reset currentCertificateId
+          currentCertificateId = null;
+
           if (projectContent && projectContent.length > 0) {
             // Assume it's base64 encoded
             const dataUrl = "data:application/pdf;base64," + projectContent;
@@ -592,6 +643,10 @@
                 title="Project PDF"
               ></iframe>
             `;
+            // If title contains certificate id in format 'Certificate - <ID>' set currentCertificateId
+            if (projectTitle && projectTitle.startsWith('Certificate - ')) {
+              currentCertificateId = projectTitle.split('Certificate - ')[1].trim();
+            }
           } else {
             pdfHtml += `<div style="text-align: center; color: #999;">No project document available</div>`;
           }
@@ -603,6 +658,19 @@
 
           body.innerHTML = pdfHtml;
           modal.classList.add("show");
+
+          // Wire download button if present
+          const dlBtn = document.getElementById('downloadPdfBtn');
+          if (dlBtn) {
+            dlBtn.onclick = () => {
+              // Prefer explicit certificate id; if not available, try to parse from title
+              let idToDownload = currentCertificateId;
+              if (!idToDownload && projectTitle && projectTitle.startsWith('Certificate - ')) {
+                idToDownload = projectTitle.split('Certificate - ')[1].trim();
+              }
+              downloadCertificateById(idToDownload);
+            };
+          }
         } catch (e) {
           alert(`Error: ${e.message}`);
         }

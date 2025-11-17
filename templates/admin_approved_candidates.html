@@ -480,6 +480,58 @@
       </div>
     </div>
 
+    <!-- Certificate Modal -->
+    <div id="certificateModal" class="modal">
+      <div
+        class="modal-content"
+        style="width: 90vw; height: 90vh; max-width: 1200px"
+      >
+        <div class="modal-header">
+          <h3 id="certificateTitle">Certificate</h3>
+          <button class="modal-close" onclick="closeCertificateModal()">
+            ✕
+          </button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; justify-content: center">
+          <div id="certificateContainer" style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center">
+            <p>Loading certificate...</p>
+          </div>
+          <div style="margin-top: 1rem; display: flex; gap: 1rem">
+            <button
+              id="downloadCertBtn"
+              onclick="downloadCertificate()"
+              style="
+                padding: 0.6rem 1.5rem;
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 600;
+                display: none;
+              "
+            >
+              📥 Download Certificate
+            </button>
+            <button
+              onclick="closeCertificateModal()"
+              style="
+                padding: 0.6rem 1.5rem;
+                background: #6c757d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 600;
+              "
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
       function escapeHtml(t) {
         return String(t || "").replace(
@@ -685,9 +737,18 @@
                   viewProfileFn(c.user_id || c.application_id || c.id);
                 profileDiv.appendChild(viewProfile);
               }
-              // Actions: Accept, Reject only
+              // Actions: Certificate, Accept, Reject
               const aDiv = document.getElementById(`actions_col_${idx}`);
               if (aDiv) {
+                const cert = document.createElement("button");
+                cert.className = "action-btn cert-btn";
+                cert.textContent = "📜 Certificate";
+                cert.style.background = "#ff9800";
+                cert.onclick = () => {
+                  issueCertificate(c.user_id || c.application_id || c.id);
+                };
+                aDiv.appendChild(cert);
+
                 const accept = document.createElement("button");
                 accept.className = "action-btn accept-btn";
                 accept.textContent = "Accept";
@@ -876,6 +937,118 @@
             );
         } catch (e) {
           alert("Error: " + e.message);
+        }
+      }
+
+      // Certificate Generation Functions
+      let currentCertificateData = null;
+
+      async function issueCertificate(candidateId) {
+        try {
+          // Show certificate modal with loading state
+          showCertificateModal();
+          const container = document.getElementById("certificateContainer");
+          container.innerHTML = "<p>Generating certificate...</p>";
+          document.getElementById("downloadCertBtn").style.display = "none";
+
+          // Call the backend API to generate certificate
+          const response = await fetch(
+            `/admin/api/generate-certificate/${candidateId}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || "Failed to generate certificate");
+          }
+
+          const data = await response.json();
+
+          if (!data.success) {
+            throw new Error(data.error || "Certificate generation failed");
+          }
+
+          // Store certificate data for download
+          currentCertificateData = {
+            pdfData: data.pdf_data,
+            filename: data.filename,
+            certificateId: data.certificate_id,
+          };
+
+          // Display the PDF in the modal
+          displayCertificate(data.pdf_data, data.certificate_id);
+        } catch (error) {
+          console.error("Error:", error);
+          const container = document.getElementById("certificateContainer");
+          container.innerHTML = `<div style="color: #d32f2f; padding: 2rem; text-align: center;">
+            <p>❌ Error: ${error.message}</p>
+            <p style="font-size: 0.9rem; margin-top: 1rem; color: #666;">Please try again.</p>
+          </div>`;
+          document.getElementById("downloadCertBtn").style.display = "none";
+        }
+      }
+
+      function displayCertificate(base64Data, certificateId) {
+        const container = document.getElementById("certificateContainer");
+
+        // Update title with certificate ID
+        document.getElementById("certificateTitle").textContent =
+          `Certificate - ${certificateId}`;
+
+        // Use iframe to display PDF from base64
+        const iframe = document.createElement("iframe");
+        iframe.src = `data:application/pdf;base64,${base64Data}`;
+        iframe.style.width = "100%";
+        iframe.style.height = "100%";
+        iframe.style.border = "none";
+        iframe.style.borderRadius = "4px";
+
+        container.innerHTML = "";
+        container.appendChild(iframe);
+
+        // Show download button
+        document.getElementById("downloadCertBtn").style.display = "block";
+      }
+
+      function showCertificateModal() {
+        document.getElementById("certificateModal").classList.add("show");
+      }
+
+      function closeCertificateModal() {
+        document.getElementById("certificateModal").classList.remove("show");
+        currentCertificateData = null;
+      }
+
+      function downloadCertificate() {
+        if (!currentCertificateData) {
+          alert("No certificate data available");
+          return;
+        }
+
+        try {
+          // Create blob from base64 data
+          const binaryString = atob(currentCertificateData.pdfData);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: "application/pdf" });
+
+          // Create download link and trigger
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = currentCertificateData.filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } catch (error) {
+          console.error("Download error:", error);
+          alert("Failed to download certificate: " + error.message);
         }
       }
 
