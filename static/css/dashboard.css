@@ -13,8 +13,8 @@ body {
 
 /* ===== NAVBAR ===== */
 .navbar {
-    background: linear-gradient(135deg, #0066cc 0%, #003d99 100%);
-    box-shadow: 0 4px 20px rgba(0, 102, 204, 0.15);
+    background: #0066cc;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -24,7 +24,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    max-width: 1200px;
+    max-width: 100%;
     margin: 0 auto;
     padding: 15px 30px;
 }
@@ -52,36 +52,40 @@ body {
 .navbar-menu {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .nav-link {
-    color: rgba(255, 255, 255, 0.9);
+    color: white;
     text-decoration: none;
     padding: 8px 16px;
-    border-radius: 6px;
+    border-radius: 4px;
     font-weight: 500;
     transition: all 0.3s ease;
     font-size: 14px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .nav-link:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
     color: white;
 }
 
 .nav-link.active {
-    background: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.6);
 }
 
 .logout-link {
-    background: rgba(255, 255, 255, 0.1);
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .logout-link:hover {
-    background: rgba(255, 68, 68, 0.8);
-    border-color: #ff4444;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
 }
 
 /* ===== DASHBOARD CONTAINER ===== */

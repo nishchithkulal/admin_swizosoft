@@ -7,35 +7,42 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html { overflow-y: scroll; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; padding-top: 70px; }
-        .navbar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1rem 0; position: fixed; top: 0; left: 0; right: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; padding-top: 70px; }
+        .navbar { background: #0066cc; padding: 1rem 0; position: fixed; top: 0; left: 0; right: 0; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 100%; }
         .navbar-container { max-width: 100%; margin: 0 auto; padding: 0 2rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; }
         .navbar-brand { display: flex; align-items: center; gap: 1rem; color: white; font-size: 1.5rem; font-weight: 700; flex-shrink: 0; }
-        .navbar-menu { display: flex; gap: 1.5rem; align-items: center; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; }
-        .nav-link { color: rgba(255,255,255,0.8); text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; transition: all 0.3s; white-space: nowrap; }
-        .nav-link:hover { color: white; background: rgba(255,255,255,0.1); }
-        .nav-link.active { color: white; background: rgba(255,255,255,0.2); }
-        .logout-link { background: rgba(255,255,255,0.2); padding: 0.5rem 1rem; }
-        .container { max-width: 1600px; margin: 0 auto; padding: 2rem; }
-        .page-header { margin-bottom: 2rem; }
-        .page-header h2 { font-size: 2rem; margin-bottom: 0.5rem; }
-        .page-header p { color: #666; }
-        .section-header { margin-bottom: 1.5rem; }
-        .section-header h3 { font-size: 1.3rem; margin-bottom: 0.5rem; }
-        .count-badge { background: #667eea; color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
-        .empty-state { text-align: center; padding: 3rem 2rem; color: #999; }
+        .logo-icon { font-size: 1.8rem; }
+        .navbar-menu { display: flex; gap: 0.8rem; align-items: center; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; }
+        .nav-link { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; transition: all 0.3s; white-space: nowrap; font-size: 0.95rem; background: transparent; border: 1px solid rgba(255,255,255,0.3); }
+        .nav-link:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.5); }
+        .nav-link.active { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.6); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .page-header { text-align: center; margin-bottom: 2rem; }
+        .page-header h1 { font-size: 2.2rem; color: #222; margin-bottom: 0.5rem; }
+        .page-header p { color: #666; font-size: 0.95rem; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .section-header h2 { font-size: 1.5rem; color: #222; }
+        .count-badge { background: #0066cc; color: white; padding: 0.35rem 0.85rem; border-radius: 20px; font-size: 0.9rem; font-weight: 600; }
+        .empty-state { text-align: center; padding: 3rem 2rem; color: #999; background: white; border-radius: 8px; }
         .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
-        .candidates-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); table-layout: fixed; }
-        .candidates-table th, .candidates-table td { padding: 0.9rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.95rem; white-space: normal; word-break: break-word; }
+        .candidates-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .candidates-table th, .candidates-table td { padding: 1rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.95rem; vertical-align: middle; }
         .candidates-table thead th { background: #f8f9fa; font-weight: 700; color: #333; }
         .candidates-table tbody tr:hover { background: #f9fafb; }
-        .file-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-        .file-btn { background: #667eea; color: white; border: none; padding: 0.4rem 0.7rem; border-radius: 4px; font-size: 0.8rem; cursor: pointer; transition: background 0.3s; white-space: nowrap; }
-        .file-btn:hover { background: #764ba2; }
+        .candidates-table td:first-child { font-weight: 600; color: #222; }
+        .action-btn { padding: 0.4rem 1.1rem; margin: 0 0.3rem 0 0; border: none; border-radius: 4px; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; display: inline-block; }
+        .view-btn { background: #0066cc; color: white; }
+        .view-btn:hover { background: #0052a3; }
+        .edit-btn { background: #ffc107; color: white; }
+        .edit-btn:hover { background: #e0a800; }
+        .accept-btn { background: #28a745; color: white; }
+        .accept-btn:hover { background: #218838; }
+        .reject-btn { background: #dc3545; color: white; }
+        .reject-btn:hover { background: #c82333; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal.show { display: flex; align-items: center; justify-content: center; }
         .modal-content { background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.3); width: 95vw; height: 95vh; display: flex; flex-direction: column; border-radius: 8px; }
-        .modal-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .modal-header { background: #0066cc; color: white; padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         .modal-header h3 { margin: 0; font-size: 1.2rem; }
         .modal-close { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 0; width: 40px; height: 40px; border-radius: 4px; transition: background 0.3s; flex-shrink: 0; }
         .modal-close:hover { background: rgba(255,255,255,0.3); }
@@ -43,14 +50,13 @@
         .file-preview-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
         .file-preview-text { background: #f5f5f5; padding: 1.5rem; border-radius: 4px; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word; width: 100%; }
         @media (max-width: 768px) {
-            .navbar-menu { gap: 1rem; }
+            .navbar-menu { gap: 0.5rem; }
             .nav-link { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
             .container { padding: 1rem; }
             .candidates-table th, .candidates-table td { padding: 0.5rem; font-size: 0.85rem; }
-            .file-btn { padding: 0.3rem 0.6rem; font-size: 0.7rem; }
+            .action-btn { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+            .tab-btn { padding: 0.6rem 1rem; font-size: 0.9rem; }
         }
-
-        /* Full-bleed file viewer for large screens */
         #fileModal .modal-content.full-bleed { width: 100vw !important; height: 100vh !important; border-radius: 0 !important; max-width: none !important; }
         #fileModal .modal-header.full-bleed-header { padding: 1rem 1.25rem; }
     </style>
@@ -58,25 +64,30 @@
 <body>
     <nav class="navbar">
         <div class="navbar-container">
-            <div class="navbar-brand">🎓 Swizosoft</div>
+            <div class="navbar-brand">
+                <div class="logo-icon">🎓</div>
+                <span>Swizosoft</span>
+            </div>
             <div class="navbar-menu">
                 <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Dashboard</a>
                 <a href="{{ url_for('admin_selected') }}" class="nav-link">Selected Candidates</a>
                 <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link active">Approved Candidates</a>
                 <a href="{{ url_for('admin_job_description') }}" class="nav-link">Job Description</a>
-                <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link">Logout</a>
+                <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
             </div>
         </div>
     </nav>
 
     <div class="container">
         <div class="page-header">
-            <h2>Approved Candidates</h2>
-            <p>List of all approved candidates with their complete information and documents</p>
+            <h1>Manage Applications</h1>
+            <p>View and manage internship applicants</p>
         </div>
 
+
         <div class="section-header">
-            <h3>Free Internship Approved Candidates <span class="count-badge" id="approved-count">0</span></h3>
+            <h2>Free Internship Applicants</h2>
+            <span style="color: #666; font-size: 0.9rem;">Applications received: <span class="count-badge" id="approved-count" style="margin-left: 0.5rem;">0</span></span>
         </div>
 
         <div id="approvedCandidatesContainer">
@@ -177,22 +188,22 @@
                 
                 if (data.success && data.data && data.data.length > 0) {
                     console.log('📊 Building compact table...');
-                    // Only show the requested columns: Name, USN, View Profile, View Resume, View ID, View Project, Accept, Reject
-                    let html = '<table class="candidates-table"><thead><tr><th>Name</th><th>USN</th><th>Profile</th><th>Resume</th><th>ID</th><th>Project</th><th>Actions</th></tr></thead><tbody>';
+                    let html = '<table class="candidates-table"><thead><tr><th>Name</th><th>USN</th><th>View ID Proof</th><th>View Resume</th><th>View Project</th><th>View Profile</th><th>Action</th></tr></thead><tbody>';
                     data.data.forEach((c, idx) => {
                         html += `<tr>`;
                         html += `<td>${escapeHtml(c.name||'-')}</td>`;
                         html += `<td>${escapeHtml(c.usn||'-')}</td>`;
-                        // Profile button column placeholder
-                        html += `<td style="width:120px"><div id="profile_col_${idx}"></div></td>`;
+                        // resume_score removed per request
+                        // ID Proof button column placeholder
+                        html += `<td style="width:120px"><div id="id_col_${idx}"></div></td>`;
                         // Resume column
                         html += `<td style="width:120px"><div id="resume_col_${idx}"></div></td>`;
-                        // ID column
-                        html += `<td style="width:120px"><div id="id_col_${idx}"></div></td>`;
                         // Project column
                         html += `<td style="width:120px"><div id="project_col_${idx}"></div></td>`;
-                        // Actions (Accept / Reject)
-                        html += `<td style="width:160px"><div id="actions_col_${idx}"></div></td>`;
+                        // View Profile column
+                        html += `<td style="width:140px"><div id="profile_col_${idx}"></div></td>`;
+                        // Actions (Accept, Reject)
+                        html += `<td style="min-width:180px"><div id="actions_col_${idx}" style="display:flex;flex-wrap:nowrap;gap:0.5rem;"></div></td>`;
                         html += `</tr>`;
                     });
                     html += '</tbody></table>';
@@ -201,15 +212,18 @@
 
                     // Attach buttons into each column
                     data.data.forEach((c, idx) => {
-                        // Profile button
-                        const pDiv = document.getElementById(`profile_col_${idx}`);
-                        if (pDiv) {
-                            const btn = document.createElement('button');
-                            btn.className = 'file-btn';
-                            btn.style.background = '#28a745';
-                            btn.textContent = 'View Profile';
-                            btn.onclick = () => viewProfile(c.user_id || c.application_id || c.id);
-                            pDiv.appendChild(btn);
+                        // ID Proof
+                        const idDiv = document.getElementById(`id_col_${idx}`);
+                        if (idDiv) {
+                            if (c.id_proof_content) {
+                                const vBtn = document.createElement('button');
+                                vBtn.className = 'action-btn view-btn';
+                                vBtn.textContent = 'View ID Proof';
+                                vBtn.onclick = () => viewFile(c.id_proof_name||'ID', c.id_proof_content, 'i');
+                                idDiv.appendChild(vBtn);
+                            } else {
+                                idDiv.innerHTML = '<span style="color:#777">-</span>';
+                            }
                         }
 
                         // Resume
@@ -217,7 +231,7 @@
                         if (rDiv) {
                             if (c.resume_content) {
                                 const vBtn = document.createElement('button');
-                                vBtn.className = 'file-btn';
+                                vBtn.className = 'action-btn view-btn';
                                 vBtn.textContent = 'View Resume';
                                 vBtn.onclick = () => viewFile(c.resume_name||'Resume', c.resume_content, 'r');
                                 rDiv.appendChild(vBtn);
@@ -226,26 +240,12 @@
                             }
                         }
 
-                        // ID
-                        const idDiv = document.getElementById(`id_col_${idx}`);
-                        if (idDiv) {
-                            if (c.id_proof_content) {
-                                const vBtn = document.createElement('button');
-                                vBtn.className = 'file-btn';
-                                vBtn.textContent = 'View ID';
-                                vBtn.onclick = () => viewFile(c.id_proof_name||'ID', c.id_proof_content, 'i');
-                                idDiv.appendChild(vBtn);
-                            } else {
-                                idDiv.innerHTML = '<span style="color:#777">-</span>';
-                            }
-                        }
-
                         // Project
                         const pjtDiv = document.getElementById(`project_col_${idx}`);
                         if (pjtDiv) {
                             if (c.project_document_content) {
                                 const vBtn = document.createElement('button');
-                                vBtn.className = 'file-btn';
+                                vBtn.className = 'action-btn view-btn';
                                 vBtn.textContent = 'View Project';
                                 vBtn.onclick = () => viewFile(c.project_document_name||'Project', c.project_document_content, 'p');
                                 pjtDiv.appendChild(vBtn);
@@ -254,19 +254,26 @@
                             }
                         }
 
-                        // Actions: Accept / Reject
+                        // View Profile button in its own column
+                        const profileDiv = document.getElementById(`profile_col_${idx}`);
+                        if (profileDiv) {
+                            const viewProfile = document.createElement('button');
+                            viewProfile.className = 'action-btn view-btn';
+                            viewProfile.textContent = 'View Profile';
+                            viewProfile.onclick = () => viewProfileFn(c.user_id || c.application_id || c.id);
+                            profileDiv.appendChild(viewProfile);
+                        }
+                        // Actions: Accept, Reject only
                         const aDiv = document.getElementById(`actions_col_${idx}`);
                         if (aDiv) {
                             const accept = document.createElement('button');
-                            accept.className = 'file-btn';
-                            accept.style.background = '#007bff';
+                            accept.className = 'action-btn accept-btn';
                             accept.textContent = 'Accept';
                             accept.onclick = () => { if (confirm('Accept this candidate?')) adminAccept(c.user_id || c.application_id || c.id); };
                             aDiv.appendChild(accept);
 
                             const rej = document.createElement('button');
-                            rej.className = 'file-btn';
-                            rej.style.background = '#dc3545';
+                            rej.className = 'action-btn reject-btn';
                             rej.textContent = 'Reject';
                             rej.onclick = () => { if (confirm('Reject this candidate? This will delete their data.')) adminReject(c.user_id || c.application_id || c.id); };
                             aDiv.appendChild(rej);
@@ -286,6 +293,9 @@
             }
         }
         
+        function viewProfileFn(id) {
+            viewProfile(id);
+        }
         async function viewProfile(id) {
             try {
                 const modal = document.getElementById('profileModal');

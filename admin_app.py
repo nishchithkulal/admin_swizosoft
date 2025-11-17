@@ -61,9 +61,9 @@ UPLOAD_FOLDER = app.config.get('UPLOAD_FOLDER', 'uploads')
 @app.route('/ping')
 def ping():
     return 'pong', 200
-# Database connection helper
+# Database connection helper with timeout and retry
 def get_db():
-    """Get database connection"""
+    """Get database connection with timeout handling"""
     return pymysql.connect(
         host=app.config.get('MYSQL_HOST'),
         user=app.config.get('MYSQL_USER'),
@@ -71,6 +71,9 @@ def get_db():
         database=app.config.get('MYSQL_DB'),
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor,
+        read_timeout=30,
+        write_timeout=30,
+        connect_timeout=10,
     )
 
 
@@ -90,8 +93,8 @@ try:
             print('Could not add approved_candidates.job_description at import-time:', e)
     cur_check.close()
     conn_check.close()
-except Exception:
-    pass
+except Exception as e:
+    print('Warning: Could not check/create approved_candidates.job_description column:', e)
 
 # Admin credentials from config
 ADMIN_USERNAME = app.config.get('ADMIN_USERNAME', 'admin')
@@ -143,6 +146,186 @@ def login_required(f):
         return f(*args, **kwargs)
 
     return decorated
+
+
+# ===== CANDIDATE ID GENERATION FUNCTION =====
+"""
+Candidate ID Generation Logic:
+Format: SIN + YY + XX + NNN
+- SIN: Permanent prefix
+- YY: Current year (last 2 digits)
+- XX: Domain code (2 letters)
+- NNN: Sequential counter for that domain in that year (001, 002, ...)
+
+Domain Codes:
+- FULL STACK DEVELOPER -> FD
+- ARTIFICIAL INTELLIGENCE -> AI
+- DATA SCIENCE -> DS
+- DATA ANALYSIS -> DA
+- MACHINE LEARNING -> ML
+- ANDROID APP DEVELOPMENT -> AD
+- SQL DEVELOPER -> SQ
+- HUMAN RESOURCE -> HR
+"""
+
+DOMAIN_CODES = {
+    # Preferred canonical mappings
+    'full stack developer': 'FD',
+    'fullstack developer': 'FD',
+    'full-stack developer': 'FD',
+    'full stack': 'FD',
+    'fullstack': 'FD',
+    'fd': 'FD',
+
+    'artificial intelligence': 'AI',
+    'ai': 'AI',
+
+    'data science': 'DS',
+    'datascience': 'DS',
+
+    'data analysis': 'DA',
+    'data-analysis': 'DA',
+
+    'machine learning': 'ML',
+    'machine-learning': 'ML',
+
+    'android app development': 'AD',
+    'android': 'AD',
+    'mobile app development': 'AD',
+
+    'sql developer': 'SQ',
+    'sql': 'SQ',
+    'database': 'SQ',
+
+    'human resource': 'HR',
+    'hr': 'HR',
+}
+
+def get_domain_code(domain_str):
+    """Convert domain name to 2-letter code.
+
+    This function attempts several strategies to avoid returning the fallback 'XX':
+    1. Exact (normalized) match against `DOMAIN_CODES`.
+    2. Token-based heuristics (checks for keywords present in the domain string).
+    3. Short-circuit checks for common abbreviations.
+
+    Returns 'XX' only if no reasonable mapping is found.
+    """
+    import re
+    if not domain_str:
+        return 'XX'
+
+    domain_lower = domain_str.lower().strip()
+
+    # Direct normalized lookup first
+    if domain_lower in DOMAIN_CODES:
+        return DOMAIN_CODES[domain_lower]
+
+    # Tokenize words (alphanumeric tokens)
+    tokens = re.findall(r"\w+", domain_lower)
+    token_set = set(tokens)
+
+    # Heuristic rules
+    try:
+        if 'full' in token_set and 'stack' in token_set:
+            return 'FD'
+        if 'fullstack' in token_set or 'full-stack' in domain_lower:
+            return 'FD'
+
+        if 'artificial' in token_set or 'ai' in token_set:
+            return 'AI'
+
+        if 'data' in token_set and 'science' in token_set:
+            return 'DS'
+        if 'data' in token_set and 'analysis' in token_set:
+            return 'DA'
+
+        if 'machine' in token_set and 'learning' in token_set:
+            return 'ML'
+
+        if 'android' in token_set or 'mobile' in token_set:
+            return 'AD'
+
+        if 'sql' in token_set or 'database' in token_set:
+            return 'SQ'
+
+        if ('human' in token_set and 'resource' in token_set) or 'hr' in token_set:
+            return 'HR'
+
+        # Last-ditch: if the domain string itself looks like a 2-letter code, accept it
+        if re.fullmatch(r'[A-Za-z]{2}', domain_lower):
+            return domain_lower.upper()
+    except Exception:
+        pass
+
+    # Log unexpected domain strings so they can be added to the map later
+    app.logger.warning(f"Unknown domain mapping for '{domain_str}' — using fallback 'XX'")
+    return 'XX'
+
+def generate_candidate_id(domain_str, conn=None):
+    """
+    Generate unique candidate ID based on domain and year.
+    Format: SIN25FD001 (example for Full Stack Developer in 2025)
+    
+    Args:
+        domain_str: Name of the domain/role
+        conn: Database connection (optional; will create if not provided)
+    
+    Returns:
+        Unique candidate ID string or None if error
+    """
+    try:
+        should_close = False
+        if conn is None:
+            conn = get_db()
+            should_close = True
+        
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        
+        # Get current year (last 2 digits)
+        from datetime import datetime
+        year_suffix = str(datetime.now().year)[-2:]  # e.g., '25' for 2025
+        
+        # Get domain code
+        domain_code = get_domain_code(domain_str)
+        
+        # Build prefix to search for
+        prefix = f"SIN{year_suffix}{domain_code}"  # e.g., "SIN25FD"
+        
+        # Get the highest counter for this prefix
+        cursor.execute("""
+            SELECT candidate_id FROM Selected 
+            WHERE candidate_id LIKE %s 
+            ORDER BY candidate_id DESC 
+            LIMIT 1
+        """, (f"{prefix}%",))
+        
+        last_row = cursor.fetchone()
+        next_counter = 1
+        
+        if last_row:
+            last_id = last_row.get('candidate_id', '')
+            # Extract the counter part (last 3 digits)
+            try:
+                counter_str = last_id[-3:]
+                last_counter = int(counter_str)
+                next_counter = last_counter + 1
+            except (ValueError, IndexError):
+                next_counter = 1
+        
+        # Format with leading zeros (3 digits)
+        candidate_id = f"{prefix}{next_counter:03d}"
+        
+        if should_close:
+            cursor.close()
+            conn.close()
+        
+        app.logger.info(f"Generated candidate_id: {candidate_id} for domain: {domain_str}")
+        return candidate_id
+        
+    except Exception as e:
+        app.logger.error(f"Error generating candidate_id: {e}")
+        return None
 
 
 @app.route('/')
@@ -373,7 +556,7 @@ def admin_api_get_selected_candidate(identifier):
 @app.route('/admin/api/get-approved-candidates')
 @login_required
 def admin_api_get_approved_candidates():
-    """Fetch all approved candidates from approved_candidates table using SQLAlchemy ORM"""
+    """Fetch all approved candidates - lightweight version without large BLOBs for list view"""
     max_retries = 3
     retry_count = 0
 
@@ -386,20 +569,40 @@ def admin_api_get_approved_candidates():
     while retry_count < max_retries:
         try:
             # Query all approved candidates ordered by created_at descending
+            # Use with_entities to exclude large BLOB columns for faster loading
+            from sqlalchemy import func
             approved_candidates = ApprovedCandidate.query.order_by(ApprovedCandidate.created_at.desc()).all()
 
-            # Convert to list of dictionaries
+            # Convert to list of dictionaries - EXCLUDING large BLOBs for speed
             processed_rows = []
             for candidate in approved_candidates:
-                candidate_dict = candidate.to_dict()
-
-                # Convert BLOB fields to base64 for JSON serialization
-                if candidate_dict.get('resume_content') and isinstance(candidate_dict['resume_content'], bytes):
-                    candidate_dict['resume_content'] = base64.b64encode(candidate_dict['resume_content']).decode('utf-8')
-                if candidate_dict.get('project_document_content') and isinstance(candidate_dict['project_document_content'], bytes):
-                    candidate_dict['project_document_content'] = base64.b64encode(candidate_dict['project_document_content']).decode('utf-8')
-                if candidate_dict.get('id_proof_content') and isinstance(candidate_dict['id_proof_content'], bytes):
-                    candidate_dict['id_proof_content'] = base64.b64encode(candidate_dict['id_proof_content']).decode('utf-8')
+                candidate_dict = {
+                    'usn': candidate.usn,
+                    'application_id': candidate.application_id,
+                    'user_id': candidate.user_id,
+                    'name': candidate.name,
+                    'email': candidate.email,
+                    'phone_number': candidate.phone_number,
+                    'year': candidate.year,
+                    'qualification': candidate.qualification,
+                    'branch': candidate.branch,
+                    'college': candidate.college,
+                    'domain': candidate.domain,
+                    'mode_of_interview': candidate.mode_of_interview,
+                    'resume_name': candidate.resume_name,
+                    'project_document_name': candidate.project_document_name,
+                    'id_proof_name': candidate.id_proof_name,
+                    'job_description': candidate.job_description,
+                }
+                
+                # ONLY include BLOB content if it exists - convert to base64
+                # This allows the frontend to check if files exist without loading huge data
+                if candidate.resume_content:
+                    candidate_dict['resume_content'] = base64.b64encode(candidate.resume_content).decode('utf-8')
+                if candidate.project_document_content:
+                    candidate_dict['project_document_content'] = base64.b64encode(candidate.project_document_content).decode('utf-8')
+                if candidate.id_proof_content:
+                    candidate_dict['id_proof_content'] = base64.b64encode(candidate.id_proof_content).decode('utf-8')
 
                 processed_rows.append(candidate_dict)
 
@@ -866,9 +1069,126 @@ def _fetch_applicant_contact(internship_id, internship_type='free'):
             except Exception:
                 pass
 
+def handle_approved_candidate_accept(approved_candidate):
+    """Handle acceptance of an approved candidate - transfer to Selected table"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Extract candidate details
+        usn_val = approved_candidate.usn
+        name_val = approved_candidate.name
+        email_val = approved_candidate.email
+        phone_val = approved_candidate.phone_number or ''
+        year_val = approved_candidate.year or ''
+        qualification_val = approved_candidate.qualification or ''
+        branch_val = approved_candidate.branch or ''
+        college_val = approved_candidate.college or ''
+        domain_val = approved_candidate.domain or ''
+        mode_of_interview_val = approved_candidate.mode_of_interview or 'online'
+        
+        # Check if already in Selected (avoid duplicates)
+        cursor.execute("SELECT usn FROM Selected WHERE usn = %s LIMIT 1", (usn_val,))
+        exists = cursor.fetchone()
+        
+        # Generate candidate_id
+        candidate_id = generate_candidate_id(domain_val, conn)
+        
+        if exists:
+            # Update existing record
+            try:
+                update_sql = """UPDATE Selected SET
+                    name = %s,
+                    email = %s,
+                    phone = %s,
+                    year = %s,
+                    qualification = %s,
+                    branch = %s,
+                    college = %s,
+                    domain = %s,
+                    approved_date = CURDATE(),
+                    status = 'ongoing',
+                    completion_date = DATE_ADD(CURDATE(), INTERVAL 1 MONTH),
+                    candidate_id = %s,
+                    mode_of_internship = 'free'
+                    WHERE usn = %s"""
+                
+                cursor.execute(update_sql, (
+                    name_val, email_val, phone_val,
+                    year_val, qualification_val, branch_val, college_val, domain_val,
+                    candidate_id, usn_val
+                ))
+                conn.commit()
+                app.logger.info(f"Updated Selected record for approved candidate {usn_val}")
+            except Exception as e:
+                app.logger.error(f"Failed to update approved candidate in Selected: {e}")
+                conn.rollback()
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'error': f'Failed to update Selected table: {e}'}), 500
+        else:
+            # Insert new record
+            try:
+                insert_sql = """INSERT INTO Selected 
+                (name, email, phone, usn, year, qualification, branch, college, domain, 
+                 approved_date, status, completion_date, candidate_id, mode_of_internship)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), 'ongoing', DATE_ADD(CURDATE(), INTERVAL 1 MONTH), %s, 'free')"""
+                
+                cursor.execute(insert_sql, (
+                    name_val, email_val, phone_val, usn_val, year_val,
+                    qualification_val, branch_val, college_val, domain_val,
+                    candidate_id
+                ))
+                conn.commit()
+                app.logger.info(f"Inserted approved candidate {usn_val} into Selected with ID {candidate_id}")
+            except Exception as e:
+                app.logger.error(f"Failed to insert approved candidate into Selected: {e}")
+                conn.rollback()
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'error': f'Failed to insert into Selected table: {e}'}), 500
+        
+        # Delete from approved_candidates table
+        try:
+            db.session.delete(approved_candidate)
+            db.session.commit()
+            app.logger.info(f"Deleted approved candidate {usn_val} from approved_candidates table")
+        except Exception as e:
+            app.logger.error(f"Failed to delete approved candidate from approved_candidates: {e}")
+            db.session.rollback()
+        
+        cursor.close()
+        conn.close()
+        
+        # Send acceptance email
+        ok = send_accept_email(email_val, name_val or '', internship_type='free')
+        
+        if ok:
+            return jsonify({'success': True, 'message': 'Accepted! Candidate moved to Selected and will receive an email', 'candidate_id': candidate_id})
+        else:
+            return jsonify({'success': True, 'message': 'Candidate moved to Selected but failed to send email', 'candidate_id': candidate_id})
+    
+    except Exception as e:
+        app.logger.exception(f"Error handling approved candidate acceptance: {e}")
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+
 @app.route('/accept/<int:user_id>', methods=['POST'])
 @login_required
 def admin_accept(user_id):
+    # First check if this is an approved candidate (by user_id or application_id)
+    try:
+        approved_candidate = ApprovedCandidate.query.filter_by(user_id=user_id).first()
+        if not approved_candidate:
+            # Try by application_id
+            approved_candidate = ApprovedCandidate.query.filter_by(application_id=str(user_id)).first()
+        
+        if approved_candidate:
+            # Handle approved candidate acceptance
+            return handle_approved_candidate_accept(approved_candidate)
+    except Exception as e:
+        app.logger.warning(f"Could not check approved candidates for user {user_id}: {e}")
+    
+    # Otherwise, handle as paid/free internship
     internship_type = request.args.get('type', 'free')
     email, name = _fetch_applicant_contact(user_id, internship_type)
     if not email:
@@ -973,8 +1293,19 @@ def admin_accept(user_id):
                                 m = re.search(r"(\d+)", str(internship_duration_val or '1'))
                                 months = int(m.group(1)) if m else 1
 
+                                # Generate candidate_id if not already present
+                                candidate_id = None
+                                try:
+                                    cursor.execute("SELECT candidate_id FROM Selected WHERE usn = %s", (usn_val,))
+                                    existing = cursor.fetchone()
+                                    candidate_id = existing.get('candidate_id') if existing and isinstance(existing, dict) else (existing[0] if existing else None)
+                                except Exception:
+                                    pass
+                                
+                                if not candidate_id:
+                                    candidate_id = generate_candidate_id(domain_val, conn)
+
                                 update_sql = """UPDATE Selected SET
-                                    application_id = %s,
                                     name = %s,
                                     email = %s,
                                     phone = %s,
@@ -990,14 +1321,15 @@ def admin_accept(user_id):
                                     internship_duration = %s,
                                     approved_date = CURDATE(),
                                     status = 'ongoing',
-                                    completion_date = DATE_ADD(CURDATE(), INTERVAL %s MONTH)
+                                    completion_date = DATE_ADD(CURDATE(), INTERVAL %s MONTH),
+                                    candidate_id = %s
                                     WHERE usn = %s"""
 
                                 cursor.execute(update_sql, (
-                                    application_id, name_val, email_val, phone_val,
+                                    name_val, email_val, phone_val,
                                     year_val, qualification_val, branch_val, college_val, domain_val,
                                     project_description_val, project_name_val, project_blob, project_name_val,
-                                    internship_duration_val, months, usn_val
+                                    internship_duration_val, months, candidate_id, usn_val
                                 ))
                                 conn.commit()
                                 inserted = True
@@ -1011,16 +1343,19 @@ def admin_accept(user_id):
                             m = re.search(r"(\d+)", str(internship_duration_val or '1'))
                             months = int(m.group(1)) if m else 1
 
+                            # Generate candidate_id for new record
+                            candidate_id = generate_candidate_id(domain_val, conn)
+
                             insert_sql = """INSERT INTO Selected 
-                            (application_id, name, email, phone, usn, year, qualification, branch, college, domain, 
-                             project_description, internship_project_name, internship_project_content, project_title, internship_duration, approved_date, status, completion_date)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), 'ongoing', DATE_ADD(CURDATE(), INTERVAL %s MONTH))"""
+                            (name, email, phone, usn, year, qualification, branch, college, domain, 
+                             project_description, internship_project_name, internship_project_content, project_title, internship_duration, approved_date, status, completion_date, candidate_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), 'ongoing', DATE_ADD(CURDATE(), INTERVAL %s MONTH), %s)"""
 
                             cursor.execute(insert_sql, (
-                                application_id, name_val, email_val, phone_val, usn_val, year_val,
+                                name_val, email_val, phone_val, usn_val, year_val,
                                 qualification_val, branch_val, college_val, domain_val,
                                 project_description_val, project_name_val, project_blob, project_name_val,
-                                internship_duration_val, months
+                                internship_duration_val, months, candidate_id
                             ))
                             conn.commit()
                             inserted = True
@@ -1146,40 +1481,90 @@ def admin_accept(user_id):
                                 return row_map[key.lower()]
                         return default
                     
-                    # Check if already exists
-                    usn_val = get_field(['usn', 'roll', 'rollno'])
-                    if usn_val:
-                        existing = ApprovedCandidate.query.filter_by(usn=usn_val).first()
-                        if not existing:
-                            # Get application_id from the row
-                            app_id = get_field(['application_id'], str(user_id))
-                            
-                            # Create new approved candidate
-                            approved_candidate = ApprovedCandidate(
-                                usn=usn_val,
-                                application_id=app_id,
-                                user_id=user_id,
-                                name=get_field(['name', 'full_name', 'applicant_name'], ''),
-                                email=get_field(['email', 'applicant_email'], ''),
-                                phone_number=get_field(['phone', 'mobile', 'phone_number', 'contact'], ''),
-                                year=get_field(['year', 'sem', 'semester', 'batch'], ''),
-                                qualification=get_field(['qualification', 'degree'], ''),
-                                branch=get_field(['branch', 'department', 'stream'], ''),
-                                college=get_field(['college', 'institution', 'institute'], ''),
-                                domain=get_field(['domain'], ''),
-                                mode_of_interview=get_field(['mode_of_interview', 'interview_mode'], 'online'),
-                                resume_name=resume_name,
-                                resume_content=resume_blob,
-                                project_document_name=project_document_name,
-                                project_document_content=project_blob,
-                                id_proof_name=id_proof_name,
-                                id_proof_content=id_proof_blob
-                            )
-                            
+                    # Determine application_id and USN (fallbacks if missing)
+                    app_id = get_field(['application_id'], str(user_id))
+                    usn_val = get_field(['usn', 'roll', 'rollno']) or (f"APP{app_id}" if app_id else str(user_id))
+
+                    # Check if a record already exists by USN or application_id
+                    existing = None
+                    try:
+                        if usn_val:
+                            existing = ApprovedCandidate.query.filter_by(usn=usn_val).first()
+                        if not existing and app_id:
+                            existing = ApprovedCandidate.query.filter_by(application_id=str(app_id)).first()
+                    except Exception:
+                        existing = None
+
+                    if not existing:
+                        # Create new approved candidate
+                        approved_candidate = ApprovedCandidate(
+                            usn=usn_val,
+                            application_id=app_id,
+                            user_id=user_id,
+                            name=get_field(['name', 'full_name', 'applicant_name'], ''),
+                            email=get_field(['email', 'applicant_email'], ''),
+                            phone_number=get_field(['phone', 'mobile', 'phone_number', 'contact'], ''),
+                            year=get_field(['year', 'sem', 'semester', 'batch'], ''),
+                            qualification=get_field(['qualification', 'degree'], ''),
+                            branch=get_field(['branch', 'department', 'stream'], ''),
+                            college=get_field(['college', 'institution', 'institute'], ''),
+                            domain=get_field(['domain'], ''),
+                            mode_of_interview=get_field(['mode_of_interview', 'interview_mode'], 'online'),
+                            resume_name=resume_name,
+                            resume_content=resume_blob,
+                            project_document_name=project_document_name,
+                            project_document_content=project_blob,
+                            id_proof_name=id_proof_name,
+                            id_proof_content=id_proof_blob
+                        )
+
+                        try:
                             db.session.add(approved_candidate)
                             db.session.commit()
                             approved_inserted = True
                             app.logger.info(f"Successfully inserted free applicant {user_id} ({usn_val}) into approved_candidates")
+                        except Exception as e:
+                            app.logger.error(f"Failed to insert approved candidate for {user_id}: {e}")
+                            try:
+                                db.session.rollback()
+                            except Exception:
+                                pass
+                            approved_inserted = False
+                    else:
+                        # Existing record found: update it with latest info
+                        try:
+                            existing.name = get_field(['name', 'full_name', 'applicant_name'], existing.name or '')
+                            existing.email = get_field(['email', 'applicant_email'], existing.email or '')
+                            existing.phone_number = get_field(['phone', 'mobile', 'phone_number', 'contact'], existing.phone_number or '')
+                            existing.year = get_field(['year', 'sem', 'semester', 'batch'], existing.year or '')
+                            existing.qualification = get_field(['qualification', 'degree'], existing.qualification or '')
+                            existing.branch = get_field(['branch', 'department', 'stream'], existing.branch or '')
+                            existing.college = get_field(['college', 'institution', 'institute'], existing.college or '')
+                            existing.domain = get_field(['domain'], existing.domain or '')
+                            existing.mode_of_interview = get_field(['mode_of_interview', 'interview_mode'], existing.mode_of_interview or 'online')
+                            # Update blobs/names if present
+                            if resume_name:
+                                existing.resume_name = resume_name
+                            if resume_blob:
+                                existing.resume_content = resume_blob
+                            if project_document_name:
+                                existing.project_document_name = project_document_name
+                            if project_blob:
+                                existing.project_document_content = project_blob
+                            if id_proof_name:
+                                existing.id_proof_name = id_proof_name
+                            if id_proof_blob:
+                                existing.id_proof_content = id_proof_blob
+                            db.session.commit()
+                            approved_inserted = True
+                            app.logger.info(f"Updated existing approved candidate record for {usn_val} / app_id {app_id}")
+                        except Exception as e:
+                            app.logger.error(f"Failed to update existing approved candidate: {e}")
+                            try:
+                                db.session.rollback()
+                            except Exception:
+                                pass
+                            approved_inserted = False
                             
                             # Prepare details for email (use human-friendly keys)
                             details_for_email = {
@@ -1257,10 +1642,54 @@ def admin_accept(user_id):
     status_code = 200 if ok else 500
     return jsonify(resp), status_code
 
+def handle_approved_candidate_reject(approved_candidate):
+    """Handle rejection of an approved candidate - delete from approved_candidates table"""
+    try:
+        email_val = approved_candidate.email
+        name_val = approved_candidate.name
+        usn_val = approved_candidate.usn
+        reason = request.get_json().get('reason', 'Not specified') if request.is_json else 'Not specified'
+        
+        # Delete from approved_candidates table
+        try:
+            db.session.delete(approved_candidate)
+            db.session.commit()
+            app.logger.info(f"Deleted rejected approved candidate {usn_val} from approved_candidates table")
+        except Exception as e:
+            app.logger.error(f"Failed to delete approved candidate from approved_candidates: {e}")
+            db.session.rollback()
+            return jsonify({'success': False, 'error': f'Failed to delete candidate: {e}'}), 500
+        
+        # Send rejection email
+        ok = send_reject_email(email_val, name_val or '', reason, internship_type='free')
+        
+        if ok:
+            return jsonify({'success': True, 'message': 'Candidate rejected and all data deleted. Sad email sent'})
+        else:
+            return jsonify({'success': True, 'message': 'Candidate rejected and all data deleted, but email failed to send'})
+    
+    except Exception as e:
+        app.logger.exception(f"Error handling approved candidate rejection: {e}")
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+
 @app.route('/reject/<int:user_id>', methods=['POST'])
 @login_required
 def admin_reject(user_id):
     """Reject an internship application: delete all candidate data and documents completely."""
+    # First check if this is an approved candidate
+    try:
+        approved_candidate = ApprovedCandidate.query.filter_by(user_id=user_id).first()
+        if not approved_candidate:
+            # Try by application_id
+            approved_candidate = ApprovedCandidate.query.filter_by(application_id=str(user_id)).first()
+        
+        if approved_candidate:
+            # Handle approved candidate rejection
+            return handle_approved_candidate_reject(approved_candidate)
+    except Exception as e:
+        app.logger.warning(f"Could not check approved candidates for user {user_id}: {e}")
+    
+    # Otherwise, handle as paid/free internship
     internship_type = request.args.get('type', 'free')
     reason = request.form.get('reason', '') or request.get_json().get('reason', '') if request.is_json else request.form.get('reason', '')
     
@@ -2114,22 +2543,30 @@ def admin_job_description():
     return render_template('admin_job_description.html', rows=rows)
 
 
-# Check what table name is resolved
-conn = get_db()
-cur = conn.cursor()
-
-table = get_resolved_table('free_internship')
-print(f"Using table: {table}")
-
-# Get a sample row with all file columns
-cur.execute(f"SELECT id, name, resume, id_proof, project_document FROM {table} LIMIT 1")
-row = cur.fetchone()
-print(f"Sample row: {row}")
-print(f"Resume type: {type(row['resume']) if row else 'No data'}")
-print(f"Resume value: {row['resume'] if row else 'No data'}")
-
-cur.close()
-conn.close()
+# Check what table name is resolved (with error handling and timeout)
+try:
+    conn = get_db()
+    cur = conn.cursor()
+    
+    table = get_resolved_table('free_internship')
+    print(f"Using table: {table}")
+    
+    # Get a sample row with all file columns
+    try:
+        cur.execute(f"SELECT id, name, resume, id_proof, project_document FROM {table} LIMIT 1")
+        row = cur.fetchone()
+        print(f"Sample row: {row}")
+        print(f"Resume type: {type(row['resume']) if row else 'No data'}")
+        print(f"Resume value: {row['resume'] if row else 'No data'}")
+    except Exception as e:
+        print(f"Warning: Could not fetch sample row: {e}")
+    
+    cur.close()
+    conn.close()
+except Exception as e:
+    print(f"Warning: Database diagnostic check failed (this is non-fatal): {e}")
+    import traceback
+    traceback.print_exc()
 
 if __name__ == '__main__':
     # Ensure a secret key exists for session support

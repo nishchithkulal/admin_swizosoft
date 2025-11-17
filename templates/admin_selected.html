@@ -5,291 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Selected Candidates - Swizosoft</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html {
-            overflow-y: scroll;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f5f5;
-            color: #333;
-            line-height: 1.6;
-            padding-top: 70px;
-        }
-
-        .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1rem 0;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 100;
-            width: 100%;
-        }
-
-        .navbar-container {
-            max-width: 100%;
-            margin: 0 auto;
-            padding: 0 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .navbar-brand {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            color: white;
-        }
-
-        .logo-icon {
-            font-size: 1.8rem;
-        }
-
-        .navbar-brand h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
-
-        .navbar-menu {
-            display: flex;
-            gap: 2rem;
-            align-items: center;
-        }
-
-        .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            font-size: 0.95rem;
-            transition: color 0.3s ease;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-        }
-
-        .nav-link:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .nav-link.active {
-            color: white;
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .logout-link {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .logout-link:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        .page-header {
-            margin-bottom: 2rem;
-        }
-
-        .page-header h2 {
-            font-size: 2rem;
-            color: #333;
-            margin-bottom: 0.5rem;
-        }
-
-        .page-header p {
-            color: #666;
-            font-size: 0.95rem;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .section-header h3 {
-            font-size: 1.3rem;
-            color: #333;
-            margin-bottom: 0.25rem;
-        }
-
-        .count-badge {
-            display: inline-block;
-            background: #667eea;
-            color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-left: 0.5rem;
-        }
-
-        .table-wrapper {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            overflow: hidden;
-        }
-
-        .table-responsive {
-            /* Avoid internal horizontal scrollbar; allow wrapping */
-            overflow-x: visible;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        thead {
-            background: #f8f9fa;
-            border-bottom: 2px solid #e0e0e0;
-        }
-
-        th {
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            color: #333;
-            font-size: 0.9rem;
-            /* Allow header text to wrap on smaller widths */
-            white-space: normal;
-        }
-
-        tbody tr {
-            border-bottom: 1px solid #e0e0e0;
-            transition: background-color 0.2s ease;
-        }
-
-        tbody tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        td {
-            padding: 1rem;
-            font-size: 0.9rem;
-            color: #555;
-        }
-
-        td:first-child {
-            font-weight: 600;
-            color: #333;
-        }
-
-        .email {
-            color: #667eea;
-            word-break: break-all;
-        }
-
-        .phone {
-            font-family: 'Courier New', monospace;
-        }
-
-        .usn {
-            font-family: 'Courier New', monospace;
-            background: #f0f0f0;
-            padding: 0.25rem 0.5rem;
-            border-radius: 3px;
-            display: inline-block;
-        }
-
-        .date {
-            color: #666;
-            font-size: 0.85rem;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem 2rem;
-            color: #999;
-        }
-
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }
-
-        .empty-state p {
-            font-size: 1rem;
-            margin-bottom: 0.5rem;
-        }
-
-        @media (max-width: 768px) {
-            .navbar-container {
-                padding: 0 1rem;
-            }
-
-            .navbar-menu {
-                gap: 1rem;
-            }
-
-            .nav-link {
-                padding: 0.4rem 0.6rem;
-                font-size: 0.85rem;
-            }
-
-            .container {
-                padding: 1rem;
-            }
-
-            .page-header h2 {
-                font-size: 1.5rem;
-            }
-
-            th, td {
-                padding: 0.75rem 0.5rem;
-                font-size: 0.8rem;
-            }
-
-            .section-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
-
-            .count-badge {
-                margin-left: 0;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .table-responsive {
-                overflow-x: scroll;
-            }
-
-            th, td {
-                padding: 0.5rem 0.25rem;
-                font-size: 0.75rem;
-            }
-
-            .page-header h2 {
-                font-size: 1.2rem;
-            }
-        }
-        /* Modal and button styles similar to approved candidates page */
-        .file-btn { background: #667eea; color: white; border: none; padding: 0.45rem 0.8rem; border-radius: 6px; font-size: 0.9rem; cursor: pointer; }
-        .file-btn:hover { opacity: 0.95; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { overflow-y: scroll; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; padding-top: 70px; }
+        .navbar { background: #0066cc; padding: 1rem 0; position: fixed; top: 0; left: 0; right: 0; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 100%; }
+        .navbar-container { max-width: 100%; margin: 0 auto; padding: 0 2rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; }
+        .navbar-brand { display: flex; align-items: center; gap: 1rem; color: white; font-size: 1.5rem; font-weight: 700; flex-shrink: 0; }
+        .logo-icon { font-size: 1.8rem; }
+        .navbar-menu { display: flex; gap: 1rem; align-items: center; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; }
+        .nav-link { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; transition: all 0.3s; white-space: nowrap; font-size: 0.95rem; background: transparent; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); }
+        .nav-link.active { background: rgba(255,255,255,0.2); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .page-header { text-align: center; margin-bottom: 2rem; }
+        .page-header h1 { font-size: 2.2rem; color: #222; margin-bottom: 0.5rem; }
+        .page-header p { color: #666; font-size: 0.95rem; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .section-header h2 { font-size: 1.5rem; color: #222; }
+        .count-badge { background: #0066cc; color: white; padding: 0.35rem 0.85rem; border-radius: 20px; font-size: 0.9rem; font-weight: 600; }
+        .empty-state { text-align: center; padding: 3rem 2rem; color: #999; background: white; border-radius: 8px; }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+        .candidates-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .candidates-table th, .candidates-table td { padding: 1rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.95rem; }
+        .candidates-table thead th { background: #f8f9fa; font-weight: 700; color: #333; }
+        .candidates-table tbody tr:hover { background: #f9fafb; }
+        .candidates-table td:first-child { font-weight: 600; color: #222; }
+        .action-btn { padding: 0.4rem 0.8rem; margin: 0 0.2rem; border: none; border-radius: 4px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .view-btn { background: #0066cc; color: white; }
+        .view-btn:hover { background: #0052a3; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal.show { display: flex; align-items: center; justify-content: center; }
         .modal-content { background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.3); width: 95vw; height: 85vh; display: flex; flex-direction: column; border-radius: 8px; }
-        .modal-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1rem 1.25rem; display:flex; justify-content:space-between; align-items:center; }
-        .modal-close { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.25rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; }
-        .modal-body { padding: 1.25rem; overflow-y: auto; flex-grow: 1; display:flex; justify-content:center; }
+        .modal-header { background: #0066cc; color: white; padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .modal-header h3 { margin: 0; font-size: 1.2rem; }
+        .modal-close { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 0; width: 40px; height: 40px; border-radius: 4px; transition: background 0.3s; flex-shrink: 0; }
+        .modal-close:hover { background: rgba(255,255,255,0.3); }
+        .modal-body { padding: 2rem; overflow-y: auto; flex-grow: 1; display: flex; justify-content: center; align-items: flex-start; }
+        @media (max-width: 768px) {
+            .navbar-menu { gap: 0.5rem; }
+            .nav-link { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+            .container { padding: 1rem; }
+            .candidates-table th, .candidates-table td { padding: 0.5rem; font-size: 0.85rem; }
+            .action-btn { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+            .tab-btn { padding: 0.6rem 1rem; font-size: 0.9rem; }
+        }
     </style>
 </head>
 <body>
@@ -304,42 +63,30 @@
                 <a href="{{ url_for('admin_selected') }}" class="nav-link active">Selected Candidates</a>
                 <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link">Approved Candidates</a>
                 <a href="{{ url_for('admin_job_description') }}" class="nav-link">Job Description</a>
-                <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link">Logout</a>
+                <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
             </div>
         </div>
-
-            <div id="selectedProfileModal" class="modal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3 id="selectedProfileTitle">Candidate Profile</h3>
-                        <button class="modal-close" onclick="closeSelectedProfile()">✕</button>
-                    </div>
-                    <div class="modal-body">
-                        <div id="selectedProfileBody" style="width:100%;max-width:1100px"></div>
-                    </div>
-                </div>
-            </div>
     </nav>
 
     <div class="container">
         <div class="page-header">
-            <h2>Selected Candidates</h2>
-            <p>List of candidates selected via the admin accept action</p>
+            <h1>Manage Applications</h1>
+            <p>View and manage internship applicants</p>
         </div>
 
+
         <div class="section-header">
-            <div>
-                <h3>Selected Internship Candidates</h3>
-                <p>Total selected: <span class="count-badge" id="selected-count">0</span></p>
-            </div>
+            <h2>Selected Internship Candidates</h2>
+            <span style="color: #666; font-size: 0.9rem;">Total selected: <span class="count-badge" id="selected-count" style="margin-left: 0.5rem;">0</span></span>
         </div>
 
         <div class="table-wrapper">
             <div class="table-responsive">
-                <table id="selectedTable">
+                <table id="selectedTable" class="candidates-table">
                     <thead>
                         <tr>
                             <th>Name</th>
+                            <th>Candidate ID</th>
                             <th>USN</th>
                             <th>Approved Date</th>
                             <th>Completion Date</th>
@@ -347,9 +94,9 @@
                         </tr>
                     </thead>
                     <tbody id="selectedTableBody">
-                        <tr>
-                            <td colspan="3" style="text-align: center; padding: 2rem;">
-                                <div class="empty-state">
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 2rem;">
+                                <div class="empty-state" style="padding: 1rem;">
                                     <div class="empty-state-icon">📋</div>
                                     <p>Loading candidates...</p>
                                 </div>
@@ -361,81 +108,19 @@
         </div>
     </div>
 
+    <div id="selectedProfileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="selectedProfileTitle">Candidate Profile</h3>
+                <button class="modal-close" onclick="closeSelectedProfile()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="selectedProfileBody" style="width:100%;max-width:1100px"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        async function loadSelectedCandidates() {
-            try {
-                const response = await fetch('/admin/api/get-selected');
-                const data = await response.json();
-                
-                if (data.success && data.data && data.data.length > 0) {
-                    const tbody = document.getElementById('selectedTableBody');
-                    tbody.innerHTML = '';
-
-                    data.data.forEach((candidate, idx) => {
-                        const row = document.createElement('tr');
-                        const nameTd = document.createElement('td');
-                        nameTd.textContent = candidate.name || '';
-
-                        const usnTd = document.createElement('td');
-                        usnTd.textContent = candidate.usn || '';
-
-                        const approvedDateTd = document.createElement('td');
-                        approvedDateTd.textContent = formatDate(candidate.approved_date || '-');
-
-                        const completionDateTd = document.createElement('td');
-                        completionDateTd.textContent = formatDate(candidate.completion_date || '-');
-
-                        const profileTd = document.createElement('td');
-                        const btn = document.createElement('button');
-                        btn.textContent = 'View Profile';
-                        btn.style.padding = '0.5rem 1rem';
-                        btn.style.background = '#28a745';
-                        btn.style.color = 'white';
-                        btn.style.border = 'none';
-                        btn.style.borderRadius = '6px';
-                        btn.style.cursor = 'pointer';
-                        btn.onclick = () => openSelectedProfile(candidate.usn || candidate.application_id || candidate.user_id);
-                        profileTd.appendChild(btn);
-
-                        row.appendChild(nameTd);
-                        row.appendChild(usnTd);
-                        row.appendChild(approvedDateTd);
-                        row.appendChild(completionDateTd);
-                        row.appendChild(profileTd);
-                        tbody.appendChild(row);
-                    });
-
-                    document.getElementById('selected-count').textContent = data.data.length;
-                } else {
-                    const tbody = document.getElementById('selectedTableBody');
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="3" style="text-align: center; padding: 2rem;">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">📭</div>
-                                    <p>No selected candidates yet</p>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                    document.getElementById('selected-count').textContent = '0';
-                }
-            } catch (error) {
-                console.error('Error loading candidates:', error);
-                const tbody = document.getElementById('selectedTableBody');
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="11" style="text-align: center; padding: 2rem;">
-                            <div class="empty-state">
-                                <div class="empty-state-icon">⚠️</div>
-                                <p>Error loading candidates</p>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }
-        }
-
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             try {
@@ -457,6 +142,82 @@
             return text.replace(/[&<>"']/g, m => map[m]);
         }
 
+        async function loadSelectedCandidates() {
+            try {
+                const response = await fetch('/admin/api/get-selected');
+                const data = await response.json();
+                
+                if (data.success && data.data && data.data.length > 0) {
+                    const tbody = document.getElementById('selectedTableBody');
+                    tbody.innerHTML = '';
+
+                    data.data.forEach((candidate) => {
+                        const row = document.createElement('tr');
+                        
+                        const nameTd = document.createElement('td');
+                        nameTd.textContent = candidate.name || '';
+
+                        const candidateIdTd = document.createElement('td');
+                        candidateIdTd.textContent = candidate.candidate_id || '-';
+                        candidateIdTd.style.fontWeight = '500';
+                        candidateIdTd.style.color = '#0066cc';
+
+                        const usnTd = document.createElement('td');
+                        usnTd.textContent = candidate.usn || '';
+
+                        const approvedDateTd = document.createElement('td');
+                        approvedDateTd.textContent = formatDate(candidate.approved_date || '-');
+
+                        const completionDateTd = document.createElement('td');
+                        completionDateTd.textContent = formatDate(candidate.completion_date || '-');
+
+                        const profileTd = document.createElement('td');
+                        const btn = document.createElement('button');
+                        btn.textContent = 'View Profile';
+                        btn.className = 'action-btn view-btn';
+                        btn.onclick = () => openSelectedProfile(candidate.usn || candidate.application_id || candidate.user_id);
+                        profileTd.appendChild(btn);
+
+                        row.appendChild(nameTd);
+                        row.appendChild(candidateIdTd);
+                        row.appendChild(usnTd);
+                        row.appendChild(approvedDateTd);
+                        row.appendChild(completionDateTd);
+                        row.appendChild(profileTd);
+                        tbody.appendChild(row);
+                    });
+
+                    document.getElementById('selected-count').textContent = data.data.length;
+                } else {
+                    const tbody = document.getElementById('selectedTableBody');
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 2rem;">
+                                <div class="empty-state" style="padding: 1rem;">
+                                    <div class="empty-state-icon">📭</div>
+                                    <p>No selected candidates yet</p>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    document.getElementById('selected-count').textContent = '0';
+                }
+            } catch (error) {
+                console.error('Error loading candidates:', error);
+                const tbody = document.getElementById('selectedTableBody');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 2rem;">
+                            <div class="empty-state" style="padding: 1rem;">
+                                <div class="empty-state-icon">⚠️</div>
+                                <p>Error loading candidates</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', loadSelectedCandidates);
         setInterval(loadSelectedCandidates, 30000);
 
@@ -467,7 +228,6 @@
                 body.innerHTML = '<p>Loading...</p>';
                 modal.classList.add('show');
 
-                // Fetch single selected candidate by USN or id
                 const r = await fetch(`/admin/api/get-selected-candidate/${encodeURIComponent(id)}`);
                 if (!r.ok) throw new Error('Failed to fetch profile');
                 const payload = await r.json();
@@ -498,6 +258,10 @@
         }
 
         function closeSelectedProfile() { document.getElementById('selectedProfileModal').classList.remove('show'); }
+
+        window.onclick = (e) => {
+            if (e.target === document.getElementById('selectedProfileModal')) closeSelectedProfile();
+        };
     </script>
 </body>
 </html>
