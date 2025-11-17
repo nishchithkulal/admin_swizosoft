@@ -1,361 +1,886 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Approved Candidates - Swizosoft</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html { overflow-y: scroll; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; padding-top: 70px; }
-        .navbar { background: #0066cc; padding: 1rem 0; position: fixed; top: 0; left: 0; right: 0; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.15); width: 100%; }
-        .navbar-container { max-width: 100%; margin: 0 auto; padding: 0 2rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; }
-        .navbar-brand { display: flex; align-items: center; gap: 1rem; color: white; font-size: 1.5rem; font-weight: 700; flex-shrink: 0; }
-        .logo-icon { font-size: 1.8rem; }
-        .navbar-menu { display: flex; gap: 0.8rem; align-items: center; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; }
-        .nav-link { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; transition: all 0.3s; white-space: nowrap; font-size: 0.95rem; background: transparent; border: 1px solid rgba(255,255,255,0.3); }
-        .nav-link:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.5); }
-        .nav-link.active { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.6); }
-        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
-        .page-header { text-align: center; margin-bottom: 2rem; }
-        .page-header h1 { font-size: 2.2rem; color: #222; margin-bottom: 0.5rem; }
-        .page-header p { color: #666; font-size: 0.95rem; }
-        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-        .section-header h2 { font-size: 1.5rem; color: #222; }
-        .count-badge { background: #0066cc; color: white; padding: 0.35rem 0.85rem; border-radius: 20px; font-size: 0.9rem; font-weight: 600; }
-        .empty-state { text-align: center; padding: 3rem 2rem; color: #999; background: white; border-radius: 8px; }
-        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
-        .candidates-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-        .candidates-table th, .candidates-table td { padding: 1rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.95rem; vertical-align: middle; }
-        .candidates-table thead th { background: #f8f9fa; font-weight: 700; color: #333; }
-        .candidates-table tbody tr:hover { background: #f9fafb; }
-        .candidates-table td:first-child { font-weight: 600; color: #222; }
-        .action-btn { padding: 0.4rem 1.1rem; margin: 0 0.3rem 0 0; border: none; border-radius: 4px; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; display: inline-block; }
-        .view-btn { background: #0066cc; color: white; }
-        .view-btn:hover { background: #0052a3; }
-        .edit-btn { background: #ffc107; color: white; }
-        .edit-btn:hover { background: #e0a800; }
-        .accept-btn { background: #28a745; color: white; }
-        .accept-btn:hover { background: #218838; }
-        .reject-btn { background: #dc3545; color: white; }
-        .reject-btn:hover { background: #c82333; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
-        .modal.show { display: flex; align-items: center; justify-content: center; }
-        .modal-content { background: white; box-shadow: 0 4px 20px rgba(0,0,0,0.3); width: 95vw; height: 95vh; display: flex; flex-direction: column; border-radius: 8px; }
-        .modal-header { background: #0066cc; color: white; padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        .modal-header h3 { margin: 0; font-size: 1.2rem; }
-        .modal-close { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 0; width: 40px; height: 40px; border-radius: 4px; transition: background 0.3s; flex-shrink: 0; }
-        .modal-close:hover { background: rgba(255,255,255,0.3); }
-        .modal-body { padding: 2rem; overflow-y: auto; flex-grow: 1; display: flex; justify-content: center; align-items: flex-start; }
-        .file-preview-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
-        .file-preview-text { background: #f5f5f5; padding: 1.5rem; border-radius: 4px; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word; width: 100%; }
-        @media (max-width: 768px) {
-            .navbar-menu { gap: 0.5rem; }
-            .nav-link { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
-            .container { padding: 1rem; }
-            .candidates-table th, .candidates-table td { padding: 0.5rem; font-size: 0.85rem; }
-            .action-btn { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
-            .tab-btn { padding: 0.6rem 1rem; font-size: 0.9rem; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        overflow-y: scroll;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        background: #f0f2f5;
+        color: #333;
+        padding-top: 70px;
+      }
+      .navbar {
+        background: #0066cc;
+        padding: 1rem 0;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        width: 100%;
+      }
+      .navbar-container {
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 0 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        width: 100%;
+      }
+      .navbar-brand {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        color: white;
+        font-size: 1.5rem;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .logo-icon {
+        font-size: 1.8rem;
+      }
+      .navbar-menu {
+        display: flex;
+        gap: 0.8rem;
+        align-items: center;
+        margin-left: auto;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+      }
+      .nav-link {
+        color: white;
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        transition: all 0.3s;
+        white-space: nowrap;
+        font-size: 0.95rem;
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      .nav-link:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.5);
+      }
+      .nav-link.active {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.6);
+      }
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+      .page-header {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+      .page-header h1 {
+        font-size: 2.2rem;
+        color: #222;
+        margin-bottom: 0.5rem;
+      }
+      .page-header p {
+        color: #666;
+        font-size: 0.95rem;
+      }
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+      }
+      .section-header h2 {
+        font-size: 1.5rem;
+        color: #222;
+      }
+      .count-badge {
+        background: #0066cc;
+        color: white;
+        padding: 0.35rem 0.85rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+      .empty-state {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: #999;
+        background: white;
+        border-radius: 8px;
+      }
+      .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+      }
+      .candidates-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      }
+      .candidates-table th,
+      .candidates-table td {
+        padding: 1rem;
+        border-bottom: 1px solid #eee;
+        text-align: left;
+        font-size: 0.95rem;
+        vertical-align: middle;
+      }
+      .candidates-table thead th {
+        background: #f8f9fa;
+        font-weight: 700;
+        color: #333;
+      }
+      .candidates-table tbody tr:hover {
+        background: #f9fafb;
+      }
+      .candidates-table td:first-child {
+        font-weight: 600;
+        color: #222;
+      }
+      .action-btn {
+        padding: 0.4rem 1.1rem;
+        margin: 0 0.3rem 0 0;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        display: inline-block;
+      }
+      .view-btn {
+        background: #0066cc;
+        color: white;
+      }
+      .view-btn:hover {
+        background: #0052a3;
+      }
+      .edit-btn {
+        background: #ffc107;
+        color: white;
+      }
+      .edit-btn:hover {
+        background: #e0a800;
+      }
+      .accept-btn {
+        background: #28a745;
+        color: white;
+      }
+      .accept-btn:hover {
+        background: #218838;
+      }
+      .reject-btn {
+        background: #dc3545;
+        color: white;
+      }
+      .reject-btn:hover {
+        background: #c82333;
+      }
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+      }
+      .modal.show {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-content {
+        background: white;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        width: 95vw;
+        height: 95vh;
+        display: flex;
+        flex-direction: column;
+        border-radius: 8px;
+      }
+      .modal-header {
+        background: #0066cc;
+        color: white;
+        padding: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .modal-header h3 {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+      .modal-close {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 0;
+        width: 40px;
+        height: 40px;
+        border-radius: 4px;
+        transition: background 0.3s;
+        flex-shrink: 0;
+      }
+      .modal-close:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+      .modal-body {
+        padding: 2rem;
+        overflow-y: auto;
+        flex-grow: 1;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .file-preview-img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 4px;
+      }
+      .file-preview-text {
+        background: #f5f5f5;
+        padding: 1.5rem;
+        border-radius: 4px;
+        font-family: "Courier New", monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        width: 100%;
+      }
+      @media (max-width: 768px) {
+        .navbar-menu {
+          gap: 0.5rem;
         }
-        #fileModal .modal-content.full-bleed { width: 100vw !important; height: 100vh !important; border-radius: 0 !important; max-width: none !important; }
-        #fileModal .modal-header.full-bleed-header { padding: 1rem 1.25rem; }
+        .nav-link {
+          padding: 0.4rem 0.6rem;
+          font-size: 0.85rem;
+        }
+        .container {
+          padding: 1rem;
+        }
+        .candidates-table th,
+        .candidates-table td {
+          padding: 0.5rem;
+          font-size: 0.85rem;
+        }
+        .action-btn {
+          padding: 0.3rem 0.6rem;
+          font-size: 0.75rem;
+        }
+        .tab-btn {
+          padding: 0.6rem 1rem;
+          font-size: 0.9rem;
+        }
+      }
+      #fileModal .modal-content.full-bleed {
+        width: 100vw !important;
+        height: 100vh !important;
+        border-radius: 0 !important;
+        max-width: none !important;
+      }
+      #fileModal .modal-header.full-bleed-header {
+        padding: 1rem 1.25rem;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <nav class="navbar">
-        <div class="navbar-container">
-            <div class="navbar-brand">
-                <div class="logo-icon">🎓</div>
-                <span>Swizosoft</span>
-            </div>
-            <div class="navbar-menu">
-                <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Dashboard</a>
-                <a href="{{ url_for('admin_selected') }}" class="nav-link">Selected Candidates</a>
-                <a href="{{ url_for('admin_approved_candidates') }}" class="nav-link active">Approved Candidates</a>
-                <a href="{{ url_for('admin_job_description') }}" class="nav-link">Job Description</a>
-                <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
-            </div>
+      <div class="navbar-container">
+        <div class="navbar-brand">
+          <div class="logo-icon">🎓</div>
+          <span>Swizosoft</span>
         </div>
+        <div class="navbar-menu">
+          <a href="{{ url_for('admin_dashboard') }}" class="nav-link"
+            >Dashboard</a
+          >
+          <a href="{{ url_for('admin_selected') }}" class="nav-link"
+            >Selected Candidates</a
+          >
+          <a
+            href="{{ url_for('admin_approved_candidates') }}"
+            class="nav-link active"
+            >Approved Candidates</a
+          >
+          <a href="{{ url_for('admin_job_description') }}" class="nav-link"
+            >Job Description</a
+          >
+          <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
+        </div>
+      </div>
     </nav>
 
     <div class="container">
-        <div class="page-header">
-            <h1>Manage Applications</h1>
-            <p>View and manage internship applicants</p>
-        </div>
+      <div class="page-header">
+        <h1>Manage Applications</h1>
+        <p>View and manage internship applicants</p>
+      </div>
 
+      <div class="section-header">
+        <h2>Free Internship Applicants</h2>
+        <span style="color: #666; font-size: 0.9rem"
+          >Applications received:
+          <span
+            class="count-badge"
+            id="approved-count"
+            style="margin-left: 0.5rem"
+            >0</span
+          ></span
+        >
+      </div>
 
-        <div class="section-header">
-            <h2>Free Internship Applicants</h2>
-            <span style="color: #666; font-size: 0.9rem;">Applications received: <span class="count-badge" id="approved-count" style="margin-left: 0.5rem;">0</span></span>
+      <div id="approvedCandidatesContainer">
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <p>Loading approved candidates...</p>
         </div>
-
-        <div id="approvedCandidatesContainer">
-            <div class="empty-state">
-                <div class="empty-state-icon">📋</div>
-                <p>Loading approved candidates...</p>
-            </div>
-        </div>
+      </div>
     </div>
 
     <div id="fileModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="fileTitle">File Viewer</h3>
-                <button class="modal-close" onclick="closeFileModal()">✕</button>
-            </div>
-            <div class="modal-body">
-                <div id="fileViewerContainer"></div>
-            </div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="fileTitle">File Viewer</h3>
+          <button class="modal-close" onclick="closeFileModal()">✕</button>
         </div>
+        <div class="modal-body">
+          <div id="fileViewerContainer"></div>
+        </div>
+      </div>
     </div>
 
     <div id="profileModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="profileTitle">Candidate Profile</h3>
-                <button class="modal-close" onclick="closeProfileModal()">✕</button>
-            </div>
-            <div class="modal-body">
-                <div id="profileBody" style="width:100%;max-width:1100px"></div>
-            </div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="profileTitle">Candidate Profile</h3>
+          <button class="modal-close" onclick="closeProfileModal()">✕</button>
         </div>
+        <div class="modal-body">
+          <div id="profileBody" style="width: 100%; max-width: 1100px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Domain Change Modal -->
+    <div id="domainChangeModal" class="modal">
+      <div
+        class="modal-content"
+        style="width: 500px; height: auto; max-height: 400px"
+      >
+        <div class="modal-header">
+          <h3>Change Domain?</h3>
+          <button class="modal-close" onclick="closeDomainChangeModal()">
+            ✕
+          </button>
+        </div>
+        <div
+          class="modal-body"
+          style="
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            padding: 2rem;
+          "
+        >
+          <p style="margin-bottom: 1rem; color: #333">
+            Would you like to change the candidate's domain?
+          </p>
+
+          <div style="width: 100%; margin-bottom: 1.5rem">
+            <label
+              style="display: block; margin-bottom: 0.5rem; font-weight: 600"
+              >Select New Domain:</label
+            >
+            <select
+              id="domainSelect"
+              style="
+                width: 100%;
+                padding: 0.5rem;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-size: 0.95rem;
+              "
+            >
+              <option value="">-- Keep Current Domain --</option>
+              <option value="FULL STACK DEVELOPER">Full Stack Developer</option>
+              <option value="ARTIFICIAL INTELLIGENCE">
+                Artificial Intelligence
+              </option>
+              <option value="DATA SCIENCE">Data Science</option>
+              <option value="DATA ANALYSIS">Data Analysis</option>
+              <option value="MACHINE LEARNING">Machine Learning</option>
+              <option value="ANDROID APP DEVELOPMENT">
+                Android App Development
+              </option>
+              <option value="SQL DEVELOPER">SQL Developer</option>
+              <option value="HUMAN RESOURCE">Human Resource</option>
+            </select>
+          </div>
+
+          <div
+            style="
+              display: flex;
+              gap: 1rem;
+              width: 100%;
+              justify-content: flex-end;
+            "
+          >
+            <button
+              onclick="closeDomainChangeModal()"
+              style="
+                padding: 0.5rem 1rem;
+                background: #6c757d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              Cancel
+            </button>
+            <button
+              onclick="confirmAcceptWithDomain()"
+              style="
+                padding: 0.5rem 1rem;
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              Accept
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script>
-        function escapeHtml(t) { return String(t || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
-        
-        function formatDate(d) {
-            if (!d) return '-';
-            try { return String(new Date(d).toLocaleDateString('en-IN', {year:'numeric',month:'short',day:'numeric'})); }
-            catch { return String(d); }
+      function escapeHtml(t) {
+        return String(t || "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            }[c])
+        );
+      }
+
+      function formatDate(d) {
+        if (!d) return "-";
+        try {
+          return String(
+            new Date(d).toLocaleDateString("en-IN", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          );
+        } catch {
+          return String(d);
         }
-        
-        function viewFile(fname, b64, type) {
-            const m = document.getElementById('fileModal');
-            const c = document.getElementById('fileViewerContainer');
-            document.getElementById('fileTitle').textContent = 'View: ' + escapeHtml(fname);
-            // make modal full-bleed on open for a laptop-like viewer
-            try { m.querySelector('.modal-content').classList.add('full-bleed'); } catch(e){}
-            try { m.querySelector('.modal-header').classList.add('full-bleed-header'); } catch(e){}
+      }
+
+      function viewFile(fname, b64, type) {
+        const m = document.getElementById("fileModal");
+        const c = document.getElementById("fileViewerContainer");
+        document.getElementById("fileTitle").textContent =
+          "View: " + escapeHtml(fname);
+        // make modal full-bleed on open for a laptop-like viewer
+        try {
+          m.querySelector(".modal-content").classList.add("full-bleed");
+        } catch (e) {}
+        try {
+          m.querySelector(".modal-header").classList.add("full-bleed-header");
+        } catch (e) {}
+        try {
+          const ext = fname.split(".").pop().toLowerCase();
+          // Make embedded viewer wider for laptop screens by using viewport-relative widths
+          if (["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)) {
+            c.innerHTML = `<div style="display:flex;justify-content:center;width:100%"><img src="data:image/;base64,${b64}" class="file-preview-img" alt="${escapeHtml(
+              fname
+            )}" style="max-width:100vw;max-height:calc(100vh - 72px);border-radius:0;"></div>`;
+          } else if (ext === "pdf") {
+            // Full-bleed iframe for laptop screens
+            c.innerHTML = `<div style="width:100%;height:100%"><iframe src="data:application/pdf;base64,${b64}" style="width:100vw;height:calc(100vh - 72px);border:none;"></iframe></div>`;
+          } else {
             try {
-                const ext = fname.split('.').pop().toLowerCase();
-                // Make embedded viewer wider for laptop screens by using viewport-relative widths
-                if (['jpg','jpeg','png','gif','bmp','webp'].includes(ext)) {
-                    c.innerHTML = `<div style="display:flex;justify-content:center;width:100%"><img src="data:image/;base64,${b64}" class="file-preview-img" alt="${escapeHtml(fname)}" style="max-width:100vw;max-height:calc(100vh - 72px);border-radius:0;"></div>`;
-                } else if (ext === 'pdf') {
-                    // Full-bleed iframe for laptop screens
-                    c.innerHTML = `<div style="width:100%;height:100%"><iframe src="data:application/pdf;base64,${b64}" style="width:100vw;height:calc(100vh - 72px);border:none;"></iframe></div>`;
-                } else {
-                    try {
-                        const t = new TextDecoder('utf-8').decode(new Uint8Array(atob(b64).split('').map(x => x.charCodeAt(0))));
-                        c.innerHTML = `<div style="display:flex;justify-content:center;width:100%"><pre class="file-preview-text" style="max-width:100vw">${escapeHtml(t.substring(0,10000))}</pre></div>`;
-                    } catch { c.innerHTML = '<div class="file-preview-text">Binary file - cannot preview</div>'; }
-                }
-            } catch (e) { c.innerHTML = `<div class="file-preview-text">Error: ${escapeHtml(e.message)}</div>`; }
-            m.classList.add('show');
-        }
-        
-        function downloadFile(fname, b64) {
-            try {
-                const l = document.createElement('a');
-                l.href = `data:application/octet-stream;base64,${b64}`;
-                l.download = fname;
-                document.body.appendChild(l);
-                l.click();
-                document.body.removeChild(l);
-            } catch (e) { alert('Error: ' + e.message); }
-        }
-        
-        function closeFileModal() { document.getElementById('fileModal').classList.remove('show'); }
-        
-        window.onclick = (e) => { 
-            if (e.target === document.getElementById('fileModal')) closeFileModal(); 
-            if (e.target === document.getElementById('profileModal')) closeProfileModal(); 
-        };
-        
-        async function loadApprovedCandidates() {
-            console.log('📡 Starting load...');
-            try {
-                const r = await fetch('/admin/api/get-approved-candidates');
-                console.log('✅ Fetch response:', r.status);
-                const ct = (r.headers.get('content-type') || '').toLowerCase();
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                if (!ct.includes('application/json')) throw new Error('Non-JSON response');
-                const data = await r.json();
-                console.log('✅ Data received:', data.data?.length, 'rows');
-                const cnt = document.getElementById('approvedCandidatesContainer');
-                
-                if (data.success && data.data && data.data.length > 0) {
-                    console.log('📊 Building compact table...');
-                    let html = '<table class="candidates-table"><thead><tr><th>Name</th><th>USN</th><th>View ID Proof</th><th>View Resume</th><th>View Project</th><th>View Profile</th><th>Action</th></tr></thead><tbody>';
-                    data.data.forEach((c, idx) => {
-                        html += `<tr>`;
-                        html += `<td>${escapeHtml(c.name||'-')}</td>`;
-                        html += `<td>${escapeHtml(c.usn||'-')}</td>`;
-                        // resume_score removed per request
-                        // ID Proof button column placeholder
-                        html += `<td style="width:120px"><div id="id_col_${idx}"></div></td>`;
-                        // Resume column
-                        html += `<td style="width:120px"><div id="resume_col_${idx}"></div></td>`;
-                        // Project column
-                        html += `<td style="width:120px"><div id="project_col_${idx}"></div></td>`;
-                        // View Profile column
-                        html += `<td style="width:140px"><div id="profile_col_${idx}"></div></td>`;
-                        // Actions (Accept, Reject)
-                        html += `<td style="min-width:180px"><div id="actions_col_${idx}" style="display:flex;flex-wrap:nowrap;gap:0.5rem;"></div></td>`;
-                        html += `</tr>`;
-                    });
-                    html += '</tbody></table>';
-                    cnt.innerHTML = html;
-                    console.log('✅ Table HTML inserted (compact)');
-
-                    // Attach buttons into each column
-                    data.data.forEach((c, idx) => {
-                        // ID Proof
-                        const idDiv = document.getElementById(`id_col_${idx}`);
-                        if (idDiv) {
-                            if (c.id_proof_content) {
-                                const vBtn = document.createElement('button');
-                                vBtn.className = 'action-btn view-btn';
-                                vBtn.textContent = 'View ID Proof';
-                                vBtn.onclick = () => viewFile(c.id_proof_name||'ID', c.id_proof_content, 'i');
-                                idDiv.appendChild(vBtn);
-                            } else {
-                                idDiv.innerHTML = '<span style="color:#777">-</span>';
-                            }
-                        }
-
-                        // Resume
-                        const rDiv = document.getElementById(`resume_col_${idx}`);
-                        if (rDiv) {
-                            if (c.resume_content) {
-                                const vBtn = document.createElement('button');
-                                vBtn.className = 'action-btn view-btn';
-                                vBtn.textContent = 'View Resume';
-                                vBtn.onclick = () => viewFile(c.resume_name||'Resume', c.resume_content, 'r');
-                                rDiv.appendChild(vBtn);
-                            } else {
-                                rDiv.innerHTML = '<span style="color:#777">-</span>';
-                            }
-                        }
-
-                        // Project
-                        const pjtDiv = document.getElementById(`project_col_${idx}`);
-                        if (pjtDiv) {
-                            if (c.project_document_content) {
-                                const vBtn = document.createElement('button');
-                                vBtn.className = 'action-btn view-btn';
-                                vBtn.textContent = 'View Project';
-                                vBtn.onclick = () => viewFile(c.project_document_name||'Project', c.project_document_content, 'p');
-                                pjtDiv.appendChild(vBtn);
-                            } else {
-                                pjtDiv.innerHTML = '<span style="color:#777">-</span>';
-                            }
-                        }
-
-                        // View Profile button in its own column
-                        const profileDiv = document.getElementById(`profile_col_${idx}`);
-                        if (profileDiv) {
-                            const viewProfile = document.createElement('button');
-                            viewProfile.className = 'action-btn view-btn';
-                            viewProfile.textContent = 'View Profile';
-                            viewProfile.onclick = () => viewProfileFn(c.user_id || c.application_id || c.id);
-                            profileDiv.appendChild(viewProfile);
-                        }
-                        // Actions: Accept, Reject only
-                        const aDiv = document.getElementById(`actions_col_${idx}`);
-                        if (aDiv) {
-                            const accept = document.createElement('button');
-                            accept.className = 'action-btn accept-btn';
-                            accept.textContent = 'Accept';
-                            accept.onclick = () => { if (confirm('Accept this candidate?')) adminAccept(c.user_id || c.application_id || c.id); };
-                            aDiv.appendChild(accept);
-
-                            const rej = document.createElement('button');
-                            rej.className = 'action-btn reject-btn';
-                            rej.textContent = 'Reject';
-                            rej.onclick = () => { if (confirm('Reject this candidate? This will delete their data.')) adminReject(c.user_id || c.application_id || c.id); };
-                            aDiv.appendChild(rej);
-                        }
-                    });
-                    
-                    document.getElementById('approved-count').textContent = data.data.length;
-                    console.log('✅ Table rendered with', data.data.length, 'rows');
-                } else {
-                    console.log('⚠️ No data or empty array');
-                    cnt.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No approved candidates yet</p></div>';
-                    document.getElementById('approved-count').textContent = '0';
-                }
-            } catch (e) {
-                console.error('❌ Error:', e);
-                document.getElementById('approvedCandidatesContainer').innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Error: ${escapeHtml(e.message)}</p></div>`;
+              const t = new TextDecoder("utf-8").decode(
+                new Uint8Array(
+                  atob(b64)
+                    .split("")
+                    .map((x) => x.charCodeAt(0))
+                )
+              );
+              c.innerHTML = `<div style="display:flex;justify-content:center;width:100%"><pre class="file-preview-text" style="max-width:100vw">${escapeHtml(
+                t.substring(0, 10000)
+              )}</pre></div>`;
+            } catch {
+              c.innerHTML =
+                '<div class="file-preview-text">Binary file - cannot preview</div>';
             }
+          }
+        } catch (e) {
+          c.innerHTML = `<div class="file-preview-text">Error: ${escapeHtml(
+            e.message
+          )}</div>`;
         }
-        
-        function viewProfileFn(id) {
-            viewProfile(id);
+        m.classList.add("show");
+      }
+
+      function downloadFile(fname, b64) {
+        try {
+          const l = document.createElement("a");
+          l.href = `data:application/octet-stream;base64,${b64}`;
+          l.download = fname;
+          document.body.appendChild(l);
+          l.click();
+          document.body.removeChild(l);
+        } catch (e) {
+          alert("Error: " + e.message);
         }
-        async function viewProfile(id) {
-            try {
-                const modal = document.getElementById('profileModal');
-                const body = document.getElementById('profileBody');
-                document.getElementById('profileTitle').textContent = 'Candidate Profile';
-                body.innerHTML = '<p>Loading...</p>';
-                modal.classList.add('show');
+      }
 
-                // Try fetching single-candidate API
-                const r = await fetch(`/admin/api/get-approved-candidate/${id}`);
-                if (!r.ok) throw new Error('Failed to fetch profile');
-                const payload = await r.json();
-                if (!payload.success) throw new Error(payload.error || 'Unknown error');
-                const c = payload.data;
+      function closeFileModal() {
+        document.getElementById("fileModal").classList.remove("show");
+      }
 
-                const rows = [];
-                const add = (k, v) => rows.push(`<tr><th style="text-align:left;padding:8px;color:#555;width:220px">${escapeHtml(k)}</th><td style="padding:8px">${escapeHtml(v||'-')}</td></tr>`);
-                add('Name', c.name);
-                add('USN', c.usn);
-                add('Email', c.email);
-                add('Phone', c.phone_number || c.phone);
-                add('Year', c.year);
-                add('Qualification', c.qualification);
-                add('Branch', c.branch);
-                add('College', c.college);
-                add('Domain', c.domain);
-                add('Mode of Interview', c.mode_of_interview);
-                add('Application ID', c.application_id);
-                add('User ID', c.user_id);
+      window.onclick = (e) => {
+        if (e.target === document.getElementById("fileModal")) closeFileModal();
+        if (e.target === document.getElementById("profileModal"))
+          closeProfileModal();
+      };
 
-                // Show profile details without Close button in profile modal; file viewing handled from table buttons
-                let html = `<div style="width:100%"><div style="overflow:auto"><table style="width:100%;border-collapse:collapse">${rows.join('')}</table></div></div>`;
-                body.innerHTML = html;
-            } catch (e) {
-                document.getElementById('profileBody').innerHTML = `<div class="empty-state"><p>Error: ${escapeHtml(e.message)}</p></div>`;
+      async function loadApprovedCandidates() {
+        console.log("📡 Starting load...");
+        try {
+          const r = await fetch("/admin/api/get-approved-candidates");
+          console.log("✅ Fetch response:", r.status);
+          const ct = (r.headers.get("content-type") || "").toLowerCase();
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          if (!ct.includes("application/json"))
+            throw new Error("Non-JSON response");
+          const data = await r.json();
+          console.log("✅ Data received:", data.data?.length, "rows");
+          const cnt = document.getElementById("approvedCandidatesContainer");
+
+          if (data.success && data.data && data.data.length > 0) {
+            console.log("📊 Building compact table...");
+            let html =
+              '<table class="candidates-table"><thead><tr><th>Name</th><th>USN</th><th>Mode of Interview</th><th>Slot Date</th><th>Slot Time</th><th>View ID Proof</th><th>View Resume</th><th>View Project</th><th>View Profile</th><th>Action</th></tr></thead><tbody>';
+            data.data.forEach((c, idx) => {
+              html += `<tr>`;
+              html += `<td>${escapeHtml(c.name || "-")}</td>`;
+              html += `<td>${escapeHtml(c.usn || "-")}</td>`;
+              // Mode of Interview column
+              html += `<td>${escapeHtml(c.mode_of_interview || "-")}</td>`;
+              // Slot Date column
+              html += `<td>${formatDate(c.slot_date) || "-"}</td>`;
+              // Slot Time column
+              html += `<td>${escapeHtml(c.slot_time || "-")}</td>`;
+              // resume_score removed per request
+              // ID Proof button column placeholder
+              html += `<td style="width:120px"><div id="id_col_${idx}"></div></td>`;
+              // Resume column
+              html += `<td style="width:120px"><div id="resume_col_${idx}"></div></td>`;
+              // Project column
+              html += `<td style="width:120px"><div id="project_col_${idx}"></div></td>`;
+              // View Profile column
+              html += `<td style="width:140px"><div id="profile_col_${idx}"></div></td>`;
+              // Actions (Accept, Reject)
+              html += `<td style="min-width:180px"><div id="actions_col_${idx}" style="display:flex;flex-wrap:nowrap;gap:0.5rem;"></div></td>`;
+              html += `</tr>`;
+            });
+            html += "</tbody></table>";
+            cnt.innerHTML = html;
+            console.log("✅ Table HTML inserted (compact)");
+
+            // Attach buttons into each column
+            data.data.forEach((c, idx) => {
+              // ID Proof
+              const idDiv = document.getElementById(`id_col_${idx}`);
+              if (idDiv) {
+                if (c.id_proof_content) {
+                  const vBtn = document.createElement("button");
+                  vBtn.className = "action-btn view-btn";
+                  vBtn.textContent = "View ID Proof";
+                  vBtn.onclick = () =>
+                    viewFile(c.id_proof_name || "ID", c.id_proof_content, "i");
+                  idDiv.appendChild(vBtn);
+                } else {
+                  idDiv.innerHTML = '<span style="color:#777">-</span>';
+                }
+              }
+
+              // Resume
+              const rDiv = document.getElementById(`resume_col_${idx}`);
+              if (rDiv) {
+                if (c.resume_content) {
+                  const vBtn = document.createElement("button");
+                  vBtn.className = "action-btn view-btn";
+                  vBtn.textContent = "View Resume";
+                  vBtn.onclick = () =>
+                    viewFile(c.resume_name || "Resume", c.resume_content, "r");
+                  rDiv.appendChild(vBtn);
+                } else {
+                  rDiv.innerHTML = '<span style="color:#777">-</span>';
+                }
+              }
+
+              // Project
+              const pjtDiv = document.getElementById(`project_col_${idx}`);
+              if (pjtDiv) {
+                if (c.project_document_content) {
+                  const vBtn = document.createElement("button");
+                  vBtn.className = "action-btn view-btn";
+                  vBtn.textContent = "View Project";
+                  vBtn.onclick = () =>
+                    viewFile(
+                      c.project_document_name || "Project",
+                      c.project_document_content,
+                      "p"
+                    );
+                  pjtDiv.appendChild(vBtn);
+                } else {
+                  pjtDiv.innerHTML = '<span style="color:#777">-</span>';
+                }
+              }
+
+              // View Profile button in its own column
+              const profileDiv = document.getElementById(`profile_col_${idx}`);
+              if (profileDiv) {
+                const viewProfile = document.createElement("button");
+                viewProfile.className = "action-btn view-btn";
+                viewProfile.textContent = "View Profile";
+                viewProfile.onclick = () =>
+                  viewProfileFn(c.user_id || c.application_id || c.id);
+                profileDiv.appendChild(viewProfile);
+              }
+              // Actions: Accept, Reject only
+              const aDiv = document.getElementById(`actions_col_${idx}`);
+              if (aDiv) {
+                const accept = document.createElement("button");
+                accept.className = "action-btn accept-btn";
+                accept.textContent = "Accept";
+                accept.onclick = () => {
+                  // Store current candidate ID and data for domain change modal
+                  window.currentAcceptCandidate = {
+                    id: c.user_id || c.application_id || c.id,
+                    name: c.name,
+                    currentDomain: c.domain,
+                  };
+                  document
+                    .getElementById("domainChangeModal")
+                    .classList.add("show");
+                };
+                aDiv.appendChild(accept);
+
+                const rej = document.createElement("button");
+                rej.className = "action-btn reject-btn";
+                rej.textContent = "Reject";
+                rej.onclick = () => {
+                  if (
+                    confirm(
+                      "Reject this candidate? This will delete their data."
+                    )
+                  )
+                    adminReject(c.user_id || c.application_id || c.id);
+                };
+                aDiv.appendChild(rej);
+              }
+            });
+
+            document.getElementById("approved-count").textContent =
+              data.data.length;
+            console.log("✅ Table rendered with", data.data.length, "rows");
+          } else {
+            console.log("⚠️ No data or empty array");
+            cnt.innerHTML =
+              '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No approved candidates yet</p></div>';
+            document.getElementById("approved-count").textContent = "0";
+          }
+        } catch (e) {
+          console.error("❌ Error:", e);
+          document.getElementById(
+            "approvedCandidatesContainer"
+          ).innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>Error: ${escapeHtml(
+            e.message
+          )}</p></div>`;
+        }
+      }
+
+      function viewProfileFn(id) {
+        viewProfile(id);
+      }
+      async function viewProfile(id) {
+        try {
+          const modal = document.getElementById("profileModal");
+          const body = document.getElementById("profileBody");
+          document.getElementById("profileTitle").textContent =
+            "Candidate Profile";
+          body.innerHTML = "<p>Loading...</p>";
+          modal.classList.add("show");
+
+          // Try fetching single-candidate API
+          const r = await fetch(`/admin/api/get-approved-candidate/${id}`);
+          if (!r.ok) throw new Error("Failed to fetch profile");
+          const payload = await r.json();
+          if (!payload.success)
+            throw new Error(payload.error || "Unknown error");
+          const c = payload.data;
+
+          const rows = [];
+          const add = (k, v) =>
+            rows.push(
+              `<tr><th style="text-align:left;padding:8px;color:#555;width:220px">${escapeHtml(
+                k
+              )}</th><td style="padding:8px">${escapeHtml(v || "-")}</td></tr>`
+            );
+          add("Name", c.name);
+          add("USN", c.usn);
+          add("Email", c.email);
+          add("Phone", c.phone_number || c.phone);
+          add("Year", c.year);
+          add("Qualification", c.qualification);
+          add("Branch", c.branch);
+          add("College", c.college);
+          add("Domain", c.domain);
+          add("Mode of Interview", c.mode_of_interview);
+          add("Slot Date", formatDate(c.slot_date));
+          add("Slot Time", c.slot_time);
+          add("Application ID", c.application_id);
+          add("User ID", c.user_id);
+
+          // Show profile details without Close button in profile modal; file viewing handled from table buttons
+          let html = `<div style="width:100%"><div style="overflow:auto"><table style="width:100%;border-collapse:collapse">${rows.join(
+            ""
+          )}</table></div></div>`;
+          body.innerHTML = html;
+        } catch (e) {
+          document.getElementById(
+            "profileBody"
+          ).innerHTML = `<div class="empty-state"><p>Error: ${escapeHtml(
+            e.message
+          )}</p></div>`;
+        }
+      }
+
+      function closeProfileModal() {
+        document.getElementById("profileModal").classList.remove("show");
+      }
+
+      async function adminAccept(id, newDomain = null) {
+        try {
+          // If domain change requested, update it first
+          if (newDomain) {
+            const updateResponse = await fetch(
+              `/admin/api/update-approved-candidate-domain`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ candidate_id: id, domain: newDomain }),
+              }
+            );
+            const updateResult = await updateResponse.json();
+            if (!updateResult.success) {
+              alert(
+                "Failed to update domain: " +
+                  (updateResult.error || "Unknown error")
+              );
+              return;
             }
+          }
+
+          // Then accept the candidate
+          const r = await fetch(`/accept/${id}`, { method: "POST" });
+          const j = await r.json();
+          if (j.success) {
+            alert("Accept email sent.");
+            loadApprovedCandidates();
+          } else
+            alert(
+              "Accept failed: " + (j.error || j.message || JSON.stringify(j))
+            );
+        } catch (e) {
+          alert("Error: " + e.message);
+        }
+      }
+
+      function closeDomainChangeModal() {
+        document.getElementById("domainChangeModal").classList.remove("show");
+        window.currentAcceptCandidate = null;
+      }
+
+      async function confirmAcceptWithDomain() {
+        const selectedDomain = document.getElementById("domainSelect").value;
+        const candidate = window.currentAcceptCandidate;
+
+        if (!candidate) {
+          alert("Error: Candidate data not found");
+          return;
         }
 
-        function closeProfileModal() { document.getElementById('profileModal').classList.remove('show'); }
+        // Close the modal
+        closeDomainChangeModal();
 
-        async function adminAccept(id) {
-            try {
-                const r = await fetch(`/accept/${id}`, { method: 'POST' });
-                const j = await r.json();
-                if (j.success) { alert('Accept email sent.'); loadApprovedCandidates(); }
-                else alert('Accept failed: ' + (j.error || j.message || JSON.stringify(j)));
-            } catch (e) { alert('Error: ' + e.message); }
+        // Accept with domain change (if domain selected)
+        await adminAccept(
+          candidate.id,
+          selectedDomain || candidate.currentDomain
+        );
+      }
+
+      async function adminReject(id) {
+        try {
+          const r = await fetch(`/reject/${id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason: "Rejected by admin" }),
+          });
+          const j = await r.json();
+          if (j.success) {
+            alert("Rejected and removed.");
+            loadApprovedCandidates();
+          } else
+            alert(
+              "Reject failed: " + (j.error || j.message || JSON.stringify(j))
+            );
+        } catch (e) {
+          alert("Error: " + e.message);
         }
+      }
 
-        async function adminReject(id) {
-            try {
-                const r = await fetch(`/reject/${id}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reason: 'Rejected by admin'}) });
-                const j = await r.json();
-                if (j.success) { alert('Rejected and removed.'); loadApprovedCandidates(); }
-                else alert('Reject failed: ' + (j.error || j.message || JSON.stringify(j)));
-            } catch (e) { alert('Error: ' + e.message); }
-        }
-
-        document.addEventListener('DOMContentLoaded', loadApprovedCandidates);
-        setInterval(loadApprovedCandidates, 30000);
+      document.addEventListener("DOMContentLoaded", loadApprovedCandidates);
+      setInterval(loadApprovedCandidates, 30000);
     </script>
-</body>
+  </body>
 </html>

@@ -604,6 +604,51 @@ def admin_api_send_report_form_email():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/admin/api/update-approved-candidate-domain', methods=['POST'])
+@login_required
+def admin_api_update_approved_candidate_domain():
+    """Update domain of an approved candidate before accepting them."""
+    try:
+        data = request.get_json()
+        candidate_id = data.get('candidate_id')
+        new_domain = data.get('domain', '').strip()
+
+        if not candidate_id or not new_domain:
+            return jsonify({'success': False, 'error': 'Missing candidate_id or domain'}), 400
+
+        # Find and update the approved candidate
+        try:
+            approved_candidate = ApprovedCandidate.query.filter_by(user_id=candidate_id).first()
+            if not approved_candidate:
+                # Try by application_id
+                approved_candidate = ApprovedCandidate.query.filter_by(application_id=str(candidate_id)).first()
+            
+            if not approved_candidate:
+                return jsonify({'success': False, 'error': f'Approved candidate not found with ID: {candidate_id}'}), 404
+
+            # Update the domain
+            approved_candidate.domain = new_domain
+            db.session.commit()
+            
+            app.logger.info(f"✓ Updated domain for approved candidate {candidate_id} to {new_domain}")
+            return jsonify({
+                'success': True,
+                'message': f'Domain updated to {new_domain}',
+                'data': {
+                    'candidate_id': candidate_id,
+                    'new_domain': new_domain
+                }
+            })
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Failed to update approved candidate domain: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    except Exception as e:
+        app.logger.error(f"✗ Exception in /admin/api/update-approved-candidate-domain: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/admin/api/get-selected-candidate/<identifier>')
 @login_required
 def admin_api_get_selected_candidate(identifier):
@@ -695,6 +740,32 @@ def admin_api_get_approved_candidates():
                     'id_proof_name': candidate.id_proof_name,
                     'job_description': candidate.job_description,
                 }
+                
+                # Fetch slot_booking data for this candidate (if exists)
+                slot_date = None
+                slot_time = None
+                try:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT slot_date, slot_time FROM slot_booking WHERE applicant_id = %s LIMIT 1",
+                        (candidate.user_id,)
+                    )
+                    slot_row = cursor.fetchone()
+                    if slot_row:
+                        if isinstance(slot_row, dict):
+                            slot_date = slot_row.get('slot_date')
+                            slot_time = slot_row.get('slot_time')
+                        else:
+                            slot_date = slot_row[0] if len(slot_row) > 0 else None
+                            slot_time = slot_row[1] if len(slot_row) > 1 else None
+                    cursor.close()
+                    conn.close()
+                except Exception as e:
+                    app.logger.warning(f"Could not fetch slot_booking for candidate {candidate.usn}: {e}")
+                
+                candidate_dict['slot_date'] = slot_date
+                candidate_dict['slot_time'] = slot_time
                 
                 # ONLY include BLOB content if it exists - convert to base64
                 # This allows the frontend to check if files exist without loading huge data
@@ -807,6 +878,27 @@ def admin_api_get_approved_candidate(user_id):
             return jsonify({'success': False, 'error': 'Candidate not found'}), 404
 
         candidate_dict = candidate.to_dict()
+
+        # Fetch slot_booking data for this candidate (if exists)
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT slot_date, slot_time FROM slot_booking WHERE applicant_id = %s LIMIT 1",
+                (candidate.user_id,)
+            )
+            slot_row = cursor.fetchone()
+            if slot_row:
+                if isinstance(slot_row, dict):
+                    candidate_dict['slot_date'] = slot_row.get('slot_date')
+                    candidate_dict['slot_time'] = slot_row.get('slot_time')
+                else:
+                    candidate_dict['slot_date'] = slot_row[0] if len(slot_row) > 0 else None
+                    candidate_dict['slot_time'] = slot_row[1] if len(slot_row) > 1 else None
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            app.logger.warning(f"Could not fetch slot_booking for candidate {user_id}: {e}")
 
         # Convert BLOBs to base64 strings for JSON
         if candidate_dict.get('resume_content') and isinstance(candidate_dict['resume_content'], bytes):
@@ -1188,6 +1280,9 @@ def handle_approved_candidate_accept(approved_candidate):
         domain_val = approved_candidate.domain or ''
         mode_of_interview_val = approved_candidate.mode_of_interview or 'online'
         
+        # Create role: "domain name Intern"
+        role_val = f"{domain_val} Intern" if domain_val else "Intern"
+        
         # Check if already in Selected (avoid duplicates)
         cursor.execute("SELECT usn FROM Selected WHERE usn = %s LIMIT 1", (usn_val,))
         exists = cursor.fetchone()
@@ -1207,6 +1302,7 @@ def handle_approved_candidate_accept(approved_candidate):
                     branch = %s,
                     college = %s,
                     domain = %s,
+                    roles = %s,
                     approved_date = CURDATE(),
                     status = 'ongoing',
                     completion_date = DATE_ADD(CURDATE(), INTERVAL 1 MONTH),
@@ -1217,7 +1313,7 @@ def handle_approved_candidate_accept(approved_candidate):
                 cursor.execute(update_sql, (
                     name_val, email_val, phone_val,
                     year_val, qualification_val, branch_val, college_val, domain_val,
-                    candidate_id, usn_val
+                    role_val, candidate_id, usn_val
                 ))
                 conn.commit()
                 app.logger.info(f"Updated Selected record for approved candidate {usn_val}")
@@ -1231,14 +1327,14 @@ def handle_approved_candidate_accept(approved_candidate):
             # Insert new record
             try:
                 insert_sql = """INSERT INTO Selected 
-                (name, email, phone, usn, year, qualification, branch, college, domain, 
+                (name, email, phone, usn, year, qualification, branch, college, domain, roles,
                  approved_date, status, completion_date, candidate_id, mode_of_internship)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), 'ongoing', DATE_ADD(CURDATE(), INTERVAL 1 MONTH), %s, 'free')"""
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), 'ongoing', DATE_ADD(CURDATE(), INTERVAL 1 MONTH), %s, 'free')"""
                 
                 cursor.execute(insert_sql, (
                     name_val, email_val, phone_val, usn_val, year_val,
                     qualification_val, branch_val, college_val, domain_val,
-                    candidate_id
+                    role_val, candidate_id
                 ))
                 conn.commit()
                 app.logger.info(f"Inserted approved candidate {usn_val} into Selected with ID {candidate_id}")
@@ -1578,16 +1674,19 @@ def admin_accept(user_id):
             
             # Insert into Selected table (with generated candidate_id, approved_date set to today, completion_date calculated)
             try:
+                # Create role: "domain name Intern"
+                role_val = f"{domain_val} Intern" if domain_val else "Intern"
+                
                 insert_sql = """INSERT INTO Selected 
-                (candidate_id, name, email, phone, usn, year, qualification, branch, college, domain, 
+                (candidate_id, name, email, phone, usn, year, qualification, branch, college, domain, roles,
                  project_description, internship_project_name, internship_project_content, project_title,
                  approved_date, status, completion_date, resend_count, mode_of_internship)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), %s, DATE_ADD(CURDATE(), INTERVAL %s MONTH), %s, %s)"""
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), %s, DATE_ADD(CURDATE(), INTERVAL %s MONTH), %s, %s)"""
                 
                 cursor.execute(insert_sql, (
                     candidate_id_val, name_val, email_val, phone_val, usn_val, year_val,
                     qualification_val, branch_val, college_val, domain_val,
-                    project_description_val, project_name_val, project_blob, project_title_val,
+                    role_val, project_description_val, project_name_val, project_blob, project_title_val,
                     'ongoing', duration_months, 0, 'paid'
                 ))
                 conn.commit()
@@ -1652,7 +1751,24 @@ def handle_approved_candidate_reject(approved_candidate):
         email_val = approved_candidate.email
         name_val = approved_candidate.name
         usn_val = approved_candidate.usn
+        user_id_val = approved_candidate.user_id
         reason = request.get_json().get('reason', 'Not specified') if request.is_json else 'Not specified'
+        
+        # First, delete any related records in slot_booking table (due to foreign key constraint)
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            
+            # Delete from slot_booking where applicant_id matches this candidate's user_id
+            cursor.execute("DELETE FROM slot_booking WHERE applicant_id = %s", (user_id_val,))
+            conn.commit()
+            app.logger.info(f"Deleted slot_booking records for approved candidate {usn_val}")
+            
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            app.logger.warning(f"Warning: Could not delete slot_booking records: {e}")
+            # Continue anyway - we'll try to delete the candidate
         
         # Delete from approved_candidates table
         try:
@@ -1668,7 +1784,7 @@ def handle_approved_candidate_reject(approved_candidate):
         ok = send_reject_email(email_val, name_val or '', reason, internship_type='free')
         
         if ok:
-            return jsonify({'success': True, 'message': 'Candidate rejected and all data deleted. Sad email sent'})
+            return jsonify({'success': True, 'message': 'Candidate rejected and all data deleted. Rejection email sent'})
         else:
             return jsonify({'success': True, 'message': 'Candidate rejected and all data deleted, but email failed to send'})
     

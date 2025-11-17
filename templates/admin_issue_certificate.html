@@ -326,6 +326,7 @@
                 <th>Name</th>
                 <th>Candidate ID</th>
                 <th>USN</th>
+                <th>Roles</th>
                 <th>Project Title</th>
                 <th>Project Report</th>
                 <th>Project Description</th>
@@ -410,6 +411,9 @@
               const usnTd = document.createElement("td");
               usnTd.textContent = candidate.usn || "";
 
+              const rolesTd = document.createElement("td");
+              rolesTd.textContent = candidate.roles || "-";
+
               const projectTitleTd = document.createElement("td");
               projectTitleTd.textContent = candidate.project_title || "-";
 
@@ -462,6 +466,7 @@
               row.appendChild(nameTd);
               row.appendChild(candidateIdTd);
               row.appendChild(usnTd);
+              row.appendChild(rolesTd);
               row.appendChild(projectTitleTd);
               row.appendChild(projectReportTd);
               row.appendChild(projectDescTd);
@@ -476,7 +481,7 @@
             const tbody = document.getElementById("certificateTableBody");
             tbody.innerHTML = `
                         <tr>
-                            <td colspan="8" style="text-align: center; padding: 2rem;">
+                            <td colspan="9" style="text-align: center; padding: 2rem;">
                                 <div class="empty-state" style="padding: 1rem;">
                                     <div class="empty-state-icon">📭</div>
                                     <p>No completed candidates found</p>
@@ -491,7 +496,7 @@
           const tbody = document.getElementById("certificateTableBody");
           tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" style="text-align: center; padding: 2rem;">
+                        <td colspan="9" style="text-align: center; padding: 2rem;">
                             <div class="empty-state" style="padding: 1rem;">
                                 <div class="empty-state-icon">⚠️</div>
                                 <p>Error loading candidates</p>
