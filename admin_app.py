@@ -1418,8 +1418,31 @@ def admin_accept(user_id):
                 except Exception:
                     row = None
             
+            if not row:
+                cursor.close()
+                conn.close()
+                return jsonify({'success': False, 'error': 'Applicant not found'}), 404
+            
+            # Extract USN early to check for duplicates
+            row_map = {k.lower(): v for k, v in (row.items() if isinstance(row, dict) else [])}
+            usn_val = row_map.get('usn') or row_map.get('roll') or row_map.get('rollno') or f"APP{user_id}"
+            
+            # CHECK IF USN ALREADY EXISTS IN APPROVED_CANDIDATES
+            try:
+                existing_candidate = ApprovedCandidate.query.filter_by(usn=usn_val).first()
+                if existing_candidate:
+                    cursor.close()
+                    conn.close()
+                    app.logger.warning(f"Duplicate USN attempt: {usn_val} already exists in approved_candidates")
+                    return jsonify({
+                        'success': False, 
+                        'error': f'This person is already present in the approved candidates list. USN: {usn_val} | Name: {existing_candidate.name}',
+                        'code': 'DUPLICATE_USN'
+                    }), 409  # 409 Conflict status code
+            except Exception as e:
+                app.logger.warning(f"Error checking for duplicate USN: {e}")
+            
             # If we have a row, try to fetch file BLOBs from free_document_store
-            # Filenames come from the free_internship_application row
             resume_blob = None
             project_blob = None
             id_proof_blob = None
@@ -1429,7 +1452,6 @@ def admin_accept(user_id):
             
             if row:
                 # First, get filenames from the application row itself
-                row_map = {k.lower(): v for k, v in (row.items() if isinstance(row, dict) else [])}
                 resume_name = row_map.get('resume')
                 project_document_name = row_map.get('project_document')
                 id_proof_name = row_map.get('id_proof')
@@ -1447,7 +1469,6 @@ def admin_accept(user_id):
                             project_blob = blob_row.get('project_document_content')
                             id_proof_blob = blob_row.get('id_proof_content')
                         else:
-                            # tuple fallback: map by position
                             try:
                                 resume_blob = blob_row[0]
                             except Exception:
@@ -1461,19 +1482,15 @@ def admin_accept(user_id):
                             except Exception:
                                 id_proof_blob = None
                 except Exception as e:
-                    # If query fails, continue with None values
                     app.logger.warning(f"Could not fetch document BLOBs: {e}")
             
             cursor.close()
             conn.close()
             
-            # Create and insert ApprovedCandidate record using SQLAlchemy
+            # Create and insert ApprovedCandidate record
             approved_inserted = False
             if row:
                 try:
-                    # Map source columns to ApprovedCandidate fields
-                    row_map = {k.lower(): v for k, v in (row.items() if isinstance(row, dict) else [])}
-                    
                     # Extract values with fallback logic
                     def get_field(keys, default=None):
                         for key in keys:
@@ -1481,197 +1498,122 @@ def admin_accept(user_id):
                                 return row_map[key.lower()]
                         return default
                     
-                    # Determine application_id and USN (fallbacks if missing)
                     app_id = get_field(['application_id'], str(user_id))
-                    usn_val = get_field(['usn', 'roll', 'rollno']) or (f"APP{app_id}" if app_id else str(user_id))
-                    print(f"DEBUG: user_id={user_id}, app_id={app_id}, usn_val={usn_val}, row_map keys={list(row_map.keys())}", flush=True)
-
-                    # Check if a record already exists by USN or application_id
-                    existing = None
-                    try:
-                        if usn_val:
-                            existing = ApprovedCandidate.query.filter_by(usn=usn_val).first()
-                            if existing:
-                                print(f"DEBUG: Found existing by usn={usn_val}", flush=True)
-                        if not existing and app_id:
-                            existing = ApprovedCandidate.query.filter_by(application_id=str(app_id)).first()
-                            if existing:
-                                print(f"DEBUG: Found existing by app_id={app_id}", flush=True)
-                    except Exception as e:
-                        print(f"DEBUG: Error checking existing: {e}", flush=True)
-                        existing = None
-
-                    if not existing:
-                        # Create new approved candidate
-                        approved_candidate = ApprovedCandidate(
-                            usn=usn_val,
-                            application_id=app_id,
-                            user_id=user_id,
-                            name=get_field(['name', 'full_name', 'applicant_name'], ''),
-                            email=get_field(['email', 'applicant_email'], ''),
-                            phone_number=get_field(['phone', 'mobile', 'phone_number', 'contact'], ''),
-                            year=get_field(['year', 'sem', 'semester', 'batch'], ''),
-                            qualification=get_field(['qualification', 'degree'], ''),
-                            branch=get_field(['branch', 'department', 'stream'], ''),
-                            college=get_field(['college', 'institution', 'institute'], ''),
-                            domain=get_field(['domain'], ''),
-                            mode_of_interview=get_field(['mode_of_interview', 'interview_mode'], 'online'),
-                            resume_name=resume_name,
-                            resume_content=resume_blob,
-                            project_document_name=project_document_name,
-                            project_document_content=project_blob,
-                            id_proof_name=id_proof_name,
-                            id_proof_content=id_proof_blob
-                        )
-
-                        try:
-                            db.session.add(approved_candidate)
-                            db.session.commit()
-                            approved_inserted = True
-                            app.logger.info(f"✓ Successfully inserted free applicant {user_id} ({usn_val}) into approved_candidates")
-                            print(f"✓ Successfully inserted free applicant {user_id} ({usn_val}) into approved_candidates", flush=True)
-                        except Exception as e:
-                            error_msg = f"Failed to insert approved candidate for {user_id}: {str(e)}"
-                            app.logger.error(error_msg)
-                            print(f"✗ {error_msg}", flush=True)
-                            try:
-                                db.session.rollback()
-                            except Exception:
-                                pass
-                            approved_inserted = False
-                    else:
-                        # Existing record found: update it with latest info
-                        try:
-                            print(f"DEBUG: Updating existing record usn={usn_val} / app_id={app_id}", flush=True)
-                            existing.name = get_field(['name', 'full_name', 'applicant_name'], existing.name or '')
-                            existing.email = get_field(['email', 'applicant_email'], existing.email or '')
-                            existing.phone_number = get_field(['phone', 'mobile', 'phone_number', 'contact'], existing.phone_number or '')
-                            existing.year = get_field(['year', 'sem', 'semester', 'batch'], existing.year or '')
-                            existing.qualification = get_field(['qualification', 'degree'], existing.qualification or '')
-                            existing.branch = get_field(['branch', 'department', 'stream'], existing.branch or '')
-                            existing.college = get_field(['college', 'institution', 'institute'], existing.college or '')
-                            existing.domain = get_field(['domain'], existing.domain or '')
-                            existing.mode_of_interview = get_field(['mode_of_interview', 'interview_mode'], existing.mode_of_interview or 'online')
-                            # Update blobs/names if present
-                            if resume_name:
-                                existing.resume_name = resume_name
-                            if resume_blob:
-                                existing.resume_content = resume_blob
-                            if project_document_name:
-                                existing.project_document_name = project_document_name
-                            if project_blob:
-                                existing.project_document_content = project_blob
-                            if id_proof_name:
-                                existing.id_proof_name = id_proof_name
-                            if id_proof_blob:
-                                existing.id_proof_content = id_proof_blob
-                            db.session.commit()
-                            approved_inserted = True
-                            app.logger.info(f"✓ Updated existing approved candidate record for {usn_val} / app_id {app_id}")
-                            print(f"✓ Updated existing approved candidate record for {usn_val} / app_id {app_id}", flush=True)
-                        except Exception as e:
-                            error_msg = f"Failed to update existing approved candidate: {str(e)}"
-                            app.logger.error(error_msg)
-                            print(f"✗ {error_msg}", flush=True)
-                            try:
-                                db.session.rollback()
-                            except Exception:
-                                pass
-                            approved_inserted = False
+                    name_val = get_field(['name', 'full_name', 'applicant_name'], '')
+                    email_val = get_field(['email', 'applicant_email'], '')
+                    phone_val = get_field(['phone', 'mobile', 'phone_number', 'contact'], '')
+                    year_val = get_field(['year', 'sem', 'semester', 'batch'], '')
+                    qualification_val = get_field(['qualification', 'degree'], '')
+                    branch_val = get_field(['branch', 'department', 'stream'], '')
+                    college_val = get_field(['college', 'institution', 'institute'], '')
+                    domain_val = get_field(['domain'], '')
+                    mode_of_interview_val = get_field(['mode_of_interview', 'interview_mode'], 'online')
                     
-                    # Delete from free_internship_application and free_document_store only if insertion/update successful
+                    # Create new approved candidate
+                    approved_candidate = ApprovedCandidate(
+                        usn=usn_val,
+                        application_id=app_id,
+                        user_id=user_id,
+                        name=name_val,
+                        email=email_val,
+                        phone_number=phone_val,
+                        year=year_val,
+                        qualification=qualification_val,
+                        branch=branch_val,
+                        college=college_val,
+                        domain=domain_val,
+                        mode_of_interview=mode_of_interview_val,
+                        resume_name=resume_name,
+                        resume_content=resume_blob,
+                        project_document_name=project_document_name,
+                        project_document_content=project_blob,
+                        id_proof_name=id_proof_name,
+                        id_proof_content=id_proof_blob
+                    )
+
+                    try:
+                        db.session.add(approved_candidate)
+                        db.session.commit()
+                        approved_inserted = True
+                        app.logger.info(f"✓ Successfully inserted free applicant {user_id} ({usn_val}) into approved_candidates")
+                    except Exception as e:
+                        app.logger.error(f"Failed to insert approved candidate: {str(e)}")
+                        try:
+                            db.session.rollback()
+                        except Exception:
+                            pass
+                        approved_inserted = False
+                    
+                    # Delete from free_internship_application and free_document_store only if insertion successful
                     if approved_inserted:
                         try:
-                            # Delete from free_document_store
                             conn = get_db()
                             cursor = conn.cursor()
                             cursor.execute("DELETE FROM free_document_store WHERE free_internship_application_id = %s", (user_id,))
                             conn.commit()
                             app.logger.info(f"✓ Deleted documents for free applicant {user_id}")
-                            print(f"✓ Deleted documents for free applicant {user_id}", flush=True)
                         except Exception as e:
-                            app.logger.warning(f"Could not delete documents for free applicant {user_id}: {e}")
-                            print(f"⚠ Could not delete documents: {e}", flush=True)
+                            app.logger.warning(f"Could not delete documents: {e}")
                         
                         try:
-                            # Delete from free_internship_application
                             conn = get_db()
                             cursor = conn.cursor()
                             cursor.execute(f"DELETE FROM {free_table} WHERE id = %s", (user_id,))
                             conn.commit()
                             app.logger.info(f"✓ Deleted free application for {user_id}")
-                            print(f"✓ Deleted free application {user_id} from {free_table}", flush=True)
                         except Exception as e:
-                            print(f"⚠ Could not delete from {free_table}: {e}. Trying alternate table...", flush=True)
                             alt_table = free_table.replace('_application', '') if free_table.endswith('_application') else free_table + '_application'
                             try:
                                 conn = get_db()
                                 cursor = conn.cursor()
                                 cursor.execute(f"DELETE FROM {alt_table} WHERE id = %s", (user_id,))
                                 conn.commit()
-                                app.logger.info(f"✓ Deleted free application for {user_id} from alternate table {alt_table}")
-                                print(f"✓ Deleted free application {user_id} from {alt_table}", flush=True)
-                            except Exception as e:
-                                app.logger.warning(f"Could not delete from {alt_table}: {e}")
-                                print(f"✗ Could not delete from {alt_table}: {e}", flush=True)
+                                app.logger.info(f"✓ Deleted free application from {alt_table}")
+                            except Exception as e2:
+                                app.logger.warning(f"Could not delete: {e2}")
                     
-                    # Prepare details for email (use human-friendly keys)
+                    # Prepare details for email
                     details_for_email = {
-                        'application_id': row_map.get('application_id') or user_id,
+                        'application_id': app_id,
                         'usn': usn_val,
-                        'name': row_map.get('name') or row_map.get('full_name') or '',
-                        'email': row_map.get('email') or '',
-                        'phone': row_map.get('phone') or row_map.get('mobile') or row_map.get('phone_number') or '',
-                        'year': row_map.get('year') or '',
-                        'qualification': row_map.get('qualification') or '',
-                        'branch': row_map.get('branch') or '',
-                        'college': row_map.get('college') or '',
-                        'domain': row_map.get('domain') or '',
-                        'mode_of_interview': row_map.get('mode_of_interview') or row_map.get('interview_mode') or 'online'
+                        'name': name_val,
+                        'email': email_val,
+                        'phone': phone_val,
+                        'year': year_val,
+                        'qualification': qualification_val,
+                        'branch': branch_val,
+                        'college': college_val,
+                        'domain': domain_val
                     }
                 except Exception as e:
-                    app.logger.error(f"Error inserting approved candidate: {str(e)}")
-                    try:
-                        db.session.rollback()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-    # If free internship, ensure DB transfer succeeded before sending email
-    interview_link = None
-    if internship_type == 'free':
-        if details_for_email is None:
-            details_for_email = {}
-        # NOTE: intentionally do NOT add a `report_link` into `details_for_email` to avoid showing it in the email
-        interview_link = 'http://127.0.0.1:5000/interview-scheduler'
-
-        # If DB insertion/update failed, return explicit error (do not just send email)
+                    app.logger.error(f"Error processing free applicant: {e}")
+                    approved_inserted = False
+            else:
+                app.logger.error(f"No row found for free applicant {user_id}")
+                approved_inserted = False
+        
+        except Exception as e:
+            app.logger.exception(f"Error in free internship acceptance: {e}")
+            approved_inserted = False
+        
+        # If DB insertion/update failed, return explicit error
         if not approved_inserted:
-            app.logger.error(f"Free internship accept failed for id={user_id}: approved_inserted={approved_inserted}")
             return jsonify({'success': False, 'error': 'Failed to move application to approved_candidates'}), 500
 
-    # Send acceptance email (for both free and paid flows)
+    # Send acceptance email
+    interview_link = None
+    if internship_type == 'free':
+        interview_link = 'http://127.0.0.1:5000/interview-scheduler'
+    
     ok = send_accept_email(email, name or '', details=details_for_email, interview_link=interview_link, internship_type=internship_type)
-
+    
     resp = {'success': bool(ok)}
     if ok:
-        # Include confirmation about DB move for free internships
-        if internship_type == 'free':
-            resp['message'] = 'Application moved to approved_candidates and accept email sent'
-        else:
-            resp['message'] = 'Accept email sent'
+        resp['message'] = 'Application moved to approved_candidates and accept email sent'
     else:
         resp['error'] = 'Failed to send email'
-
-    # Include Selected insertion result when processing paid internships
-    if internship_type == 'paid':
-        resp['selected_inserted'] = selected_inserted
-        if selected_insert_error:
-            resp['selected_insert_error'] = selected_insert_error
-
-    status_code = 200 if ok else 500
-    return jsonify(resp), status_code
+    
+    return jsonify(resp), (200 if ok else 500)
 
 def handle_approved_candidate_reject(approved_candidate):
     """Handle rejection of an approved candidate - delete from approved_candidates table"""
@@ -1935,10 +1877,15 @@ def admin_view_file(internship_id, file_type):
                             detected_ext = 'jpg'
                         elif data.startswith(b'\x89PNG'):
                             detected_ext = 'png'
-                        elif data.startswith(b'PK\x03\x04'):
-                            detected_ext = 'docx'
+                        elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX magic bytes
+                            if b'word' in data[:1000]:
+                                detected_ext = 'docx'
+                            else:
+                                detected_ext = 'xlsx'
                         
-                        filename = f'{file_type}.{detected_ext}'
+                        cursor.close()
+                        conn.close()
+                        return send_file(io.BytesIO(data), mimetype='application/octet-stream', as_attachment=False, download_name=f"{file_type}.{detected_ext}")
                 except Exception:
                     pass
         
@@ -2142,173 +2089,6 @@ def admin_serve_file_inplace(internship_id, file_type):
                     if result and result.get(blob_col):
                         data = bytes(result.get(blob_col))
                         mime = 'application/octet-stream'
-                        filename = f'{file_type}.bin'
-                        
-                        if data.startswith(b'%PDF'):
-                            mime = 'application/pdf'
-                            filename = f'{file_type}.pdf'
-                        elif data.startswith(b'\xff\xd8'):
-                            mime = 'image/jpeg'
-                            filename = f'{file_type}.jpg'
-                        elif data.startswith(b'\x89PNG'):
-                            mime = 'image/png'
-                            filename = f'{file_type}.png'
-                        elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX magic bytes
-                            mime = 'application/octet-stream'
-                            filename = f'{file_type}.docx'
-                        
-                        cursor.close()
-                        conn.close()
-                        
-                        # Return with appropriate headers
-                        from flask import make_response
-                        response = make_response(data)
-                        response.headers['Content-Type'] = mime
-                        if force_download:
-                            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-                        else:
-                            response.headers['Content-Disposition'] = 'inline'
-                        response.headers['Cache-Control'] = 'public, max-age=3600'
-                        return response
-                except Exception:
-                    pass
-        
-        # Fallback: try application table (filenames or URLs)
-        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
-        
-        column_map = {
-            'id_proof': 'id_proof',
-            'resume': 'resume',
-            'project': 'project_document',
-            'payment': 'payment_screenshot',
-        }
-        column = column_map.get(file_type, file_type)
-        
-        query = f"SELECT {column} FROM {table} WHERE id = %s"
-        try:
-            cursor.execute(query, (internship_id,))
-            result = cursor.fetchone()
-        except Exception:
-            if file_type == 'payment':
-                # Try payment_proof for payment files
-                try:
-                    query = f"SELECT payment_proof FROM {table} WHERE id = %s"
-                    cursor.execute(query, (internship_id,))
-                    result = cursor.fetchone()
-                except Exception:
-                    result = None
-            else:
-                result = None
-
-        if not result:
-            alt_table = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
-            try:
-                query = f"SELECT {column} FROM {alt_table} WHERE id = %s"
-                cursor.execute(query, (internship_id,))
-                result = cursor.fetchone()
-            except Exception:
-                result = None
-
-        cursor.close()
-        conn.close()
-
-        if not result:
-            return ("File not found", 404)
-        
-        # Get the value (try column or payment_proof)
-        value = result.get(column) or result.get('payment_proof') or result.get('payment_screenshot')
-        if not value:
-            return ("File not found", 404)
-
-        # If DB stored file as bytes (BLOB)
-        if isinstance(value, (bytes, bytearray)):
-            data = bytes(value)
-            mime = 'application/octet-stream'
-            filename = f'{file_type}.bin'
-            
-            if data.startswith(b'%PDF'):
-                mime = 'application/pdf'
-                filename = f'{file_type}.pdf'
-            elif data.startswith(b'\xff\xd8'):
-                mime = 'image/jpeg'
-                filename = f'{file_type}.jpg'
-            elif data.startswith(b'\x89PNG'):
-                mime = 'image/png'
-                filename = f'{file_type}.png'
-            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX
-                mime = 'application/octet-stream'
-                filename = f'{file_type}.docx'
-            
-            # Return with appropriate headers
-            from flask import make_response
-            response = make_response(data)
-            response.headers['Content-Type'] = mime
-            if force_download:
-                response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-            else:
-                response.headers['Content-Disposition'] = 'inline'
-            response.headers['Cache-Control'] = 'public, max-age=3600'
-            return response
-
-        # If DB stored a string (filename or URL path)
-        if isinstance(value, str):
-            import os
-            if value.startswith('http://') or value.startswith('https://'):
-                return redirect(value)
-
-            local_path = os.path.join(app.root_path, UPLOAD_FOLDER, value)
-            if os.path.exists(local_path):
-                ext = os.path.splitext(value)[1].lower()
-                mime = 'application/octet-stream'
-                if ext == '.pdf':
-                    mime = 'application/pdf'
-                elif ext in ('.jpg', '.jpeg'):
-                    mime = 'image/jpeg'
-                elif ext == '.png':
-                    mime = 'image/png'
-                if force_download:
-                    return send_from_directory(os.path.join(app.root_path, UPLOAD_FOLDER), value, as_attachment=True)
-                else:
-                    return send_from_directory(os.path.join(app.root_path, UPLOAD_FOLDER), value, as_attachment=False)
-
-            base = app.config.get('UPLOAD_URL_BASE') or f"https://{app.config.get('MYSQL_HOST')}/uploads"
-            external_url = base.rstrip('/') + '/' + value
-            return redirect(external_url)
-
-        return ("File format not supported", 415)
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return (f"Error: {str(e)}", 500)
-    
-    if file_type not in ('id_proof', 'resume', 'project', 'payment'):
-        return ("Invalid file type", 400)
-
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # First, try document_store for BLOBs
-        if file_type != 'payment':
-            doc_store_table = 'paid_document_store' if internship_type == 'paid' else 'free_document_store'
-            app_id_col = 'paid_internship_application_id' if internship_type == 'paid' else 'free_internship_application_id'
-            
-            blob_column_map = {
-                'id_proof': 'id_proof_content',
-                'resume': 'resume_content',
-                'project': 'project_document_content',
-            }
-            blob_col = blob_column_map.get(file_type)
-            
-            if blob_col:
-                try:
-                    query = f"SELECT {blob_col} FROM {doc_store_table} WHERE {app_id_col} = %s"
-                    cursor.execute(query, (internship_id,))
-                    result = cursor.fetchone()
-                    if result and result.get(blob_col):
-                        data = bytes(result.get(blob_col))
-                        mime = 'application/octet-stream'
                         if data.startswith(b'%PDF'):
                             mime = 'application/pdf'
                         elif data.startswith(b'\xff\xd8'):
@@ -2421,6 +2201,140 @@ def admin_serve_file_inplace(internship_id, file_type):
         import traceback
         traceback.print_exc()
         return (f"Error: {str(e)}", 500)
+    
+    if file_type not in ('id_proof', 'resume', 'project', 'payment'):
+        return ("Invalid file type", 400)
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # First, try document_store for BLOBs
+        if file_type != 'payment':
+            doc_store_table = 'paid_document_store' if internship_type == 'paid' else 'free_document_store'
+            app_id_col = 'paid_internship_application_id' if internship_type == 'paid' else 'free_internship_application_id'
+            
+            blob_column_map = {
+                'id_proof': 'id_proof_content',
+                'resume': 'resume_content',
+                'project': 'project_document_content',
+            }
+            blob_col = blob_column_map.get(file_type)
+            
+            if blob_col:
+                try:
+                    query = f"SELECT {blob_col} FROM {doc_store_table} WHERE {app_id_col} = %s"
+                    cursor.execute(query, (internship_id,))
+                    result = cursor.fetchone()
+                    if result and result.get(blob_col):
+                        data = bytes(result.get(blob_col))
+                        
+                        if data.startswith(b'%PDF'):
+                            detected_ext = 'pdf'
+                        elif data.startswith(b'\xff\xd8'):
+                            detected_ext = 'jpg'
+                        elif data.startswith(b'\x89PNG'):
+                            detected_ext = 'png'
+                        elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX magic bytes
+                            if b'word' in data[:1000]:
+                                detected_ext = 'docx'
+                            else:
+                                detected_ext = 'xlsx'
+                        
+                        cursor.close()
+                        conn.close()
+                        return send_file(io.BytesIO(data), mimetype='application/octet-stream', as_attachment=True, download_name=f"{file_type}.{detected_ext}")
+                except Exception:
+                    pass
+        
+        # Fallback: try application table (filenames or URLs)
+        table = get_resolved_table('paid_internship') if internship_type == 'paid' else get_resolved_table('free_internship')
+        
+        column_map = {
+            'id_proof': 'id_proof',
+            'resume': 'resume',
+            'project': 'project_document',
+            'payment': 'payment_screenshot',
+        }
+        column = column_map.get(file_type, file_type)
+        
+        query = f"SELECT {column} FROM {table} WHERE id = %s"
+        try:
+            cursor.execute(query, (internship_id,))
+            result = cursor.fetchone()
+        except Exception:
+            if file_type == 'payment':
+                # Try payment_proof for payment files
+                try:
+                    query = f"SELECT payment_proof FROM {table} WHERE id = %s"
+                    cursor.execute(query, (internship_id,))
+                    result = cursor.fetchone()
+                except Exception:
+                    result = None
+            else:
+                result = None
+
+        if not result:
+            alt_table = table + '_application' if not table.endswith('_application') else table.replace('_application', '')
+            try:
+                query = f"SELECT {column} FROM {alt_table} WHERE id = %s"
+                cursor.execute(query, (internship_id,))
+                result = cursor.fetchone()
+            except Exception:
+                result = None
+
+        cursor.close()
+        conn.close()
+
+        if not result:
+            return ("File not found", 404)
+        
+        # Get the value (try column or payment_proof)
+        value = result.get(column) or result.get('payment_proof') or result.get('payment_screenshot')
+        if not value:
+            return ("File not found", 404)
+
+        # If DB stored file as bytes (BLOB)
+        if isinstance(value, (bytes, bytearray)):
+            data = bytes(value)
+            mime = 'application/octet-stream'
+            if data.startswith(b'%PDF'):
+                mime = 'application/pdf'
+            elif data.startswith(b'\xff\xd8'):
+                mime = 'image/jpeg'
+            elif data.startswith(b'\x89PNG'):
+                mime = 'image/png'
+            elif data.startswith(b'PK\x03\x04'):  # DOCX/XLSX - serve as octet-stream for Google Docs Viewer
+                mime = 'application/octet-stream'
+            # Force inline display and no caching so Google Docs can fetch it
+            from flask import make_response
+            response = make_response(data)
+            response.headers['Content-Type'] = mime
+            response.headers['Content-Disposition'] = 'inline'
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+            return response
+
+        # If DB stored a string (filename or URL path)
+        if isinstance(value, str):
+            import os
+            if value.startswith('http://') or value.startswith('https://'):
+                return redirect(value)
+
+            local_path = os.path.join(app.root_path, UPLOAD_FOLDER, value)
+            if os.path.exists(local_path):
+                ext = os.path.splitext(value)[1].lower()
+                mime = 'application/octet-stream'
+                if ext == '.pdf':
+                    mime = 'application/pdf'
+                elif ext in ('.jpg', '.jpeg'):
+                    mime = 'image/jpeg'
+                elif ext == '.png':
+                    mime = 'image/png'
+                return send_from_directory(os.path.join(app.root_path, UPLOAD_FOLDER), value, as_attachment=False)
+
+            base = app.config.get('UPLOAD_URL_BASE') or f"https://{app.config.get('MYSQL_HOST')}/uploads"
+            external_url = base.rstrip('/') + '/' + value
+            return redirect(external_url)
 
         return ("File format not supported", 415)
 
@@ -2623,7 +2537,7 @@ if __name__ == '__main__':
                         cur.execute("ALTER TABLE approved_candidates ADD COLUMN job_description TEXT")
                         conn.commit()
                         print('Added approved_candidates.job_description column')
-                    except Exception as e:
+                    except Exception:
                         # If ALTER fails, log and continue; the app will handle missing column gracefully later
                         print('Could not add approved_candidates.job_description column:', e)
             except Exception as e:
