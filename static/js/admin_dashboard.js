@@ -403,17 +403,161 @@ async function confirmOfferLetter() {
   }
 
   try {
-    console.log("✓ Confirming offer letter and sending email...");
+    // Save data BEFORE closing modal (which sets currentOfferLetterData to null)
+    const candidateData = currentOfferLetterData;
+    
+    console.log("✓ Processing offer letter workflow...");
     closeOfferLetterModal();
 
-    // Show loading
-    alert("Confirming offer letter... (check console for progress)");
+    // For paid internships, use independent endpoints
+    if (candidateData.source === "paid") {
+      await confirmOfferLetterPaid(candidateData);
+    } else {
+      // For approved candidates, use the old endpoint
+      await confirmOfferLetterApproved(candidateData);
+    }
+
+    currentOfferLetterData = null;
+  } catch (error) {
+    console.error("Error confirming offer letter:", error);
+    alert("❌ Error: " + error.message);
+  }
+}
+
+async function confirmOfferLetterPaid(candidateData) {
+  try {
+    console.log("✓ Processing PAID internship workflow...");
+
+    const emailData = {
+      email: candidateData.email,
+      name: candidateData.name,
+      pdf_b64: candidateData.pdf_b64,
+      reference_number: candidateData.reference_number,
+    };
+
+    const transferData = {
+      usn: candidateData.usn,
+      application_id: candidateData.candidate_id,
+      name: candidateData.name,
+      email: candidateData.email,
+      phone: candidateData.phone || "",
+      domain: candidateData.domain,
+      college: candidateData.college,
+      year: candidateData.year || "",
+      qualification: candidateData.qualification || "",
+      branch: candidateData.branch || "",
+      project_description: candidateData.project_description || "",
+      project_name: candidateData.project_name || "",
+      project_title: candidateData.project_title || "",
+      duration_months: candidateData.duration || 3,
+      pdf_b64: candidateData.pdf_b64,
+      reference_number: candidateData.reference_number,
+    };
+
+    let emailStatus = { success: false, message: "Not attempted" };
+    let transferStatus = { success: false, message: "Not attempted" };
+
+    // Step 1: Send email (independent - errors here should not block data transfer)
+    console.log("📧 Step 1: Sending offer letter email...");
+    try {
+      const emailResponse = await fetch("/admin/api/send-paid-offer-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailData),
+      });
+
+      if (emailResponse.ok) {
+        emailStatus = await emailResponse.json();
+        console.log("✓ Email step completed:", emailStatus);
+      } else {
+        const errorData = await emailResponse.json();
+        emailStatus = {
+          success: false,
+          message: errorData.error || "Email send failed",
+        };
+        console.warn("⚠️ Email send returned error status:", errorData);
+      }
+    } catch (emailError) {
+      emailStatus = {
+        success: false,
+        message: `Email error: ${emailError.message}`,
+      };
+      console.warn("⚠️ Email send threw exception:", emailError);
+    }
+
+    // Step 2: Transfer data to Selected (independent - should work even if email fails)
+    console.log("📦 Step 2: Transferring candidate to Selected table...");
+    try {
+      const transferResponse = await fetch(
+        "/admin/api/transfer-paid-to-selected",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(transferData),
+        }
+      );
+
+      if (!transferResponse.ok) {
+        const errorData = await transferResponse.json();
+        throw new Error(errorData.error || "Failed to transfer candidate");
+      }
+
+      transferStatus = await transferResponse.json();
+      console.log("✓ Transfer step completed:", transferStatus);
+
+      if (!transferStatus.success) {
+        throw new Error(transferStatus.error || "Transfer failed");
+      }
+    } catch (transferError) {
+      transferStatus = {
+        success: false,
+        message: `Transfer error: ${transferError.message}`,
+      };
+      console.error("❌ Transfer error:", transferError);
+      throw transferError; // Transfer is critical - fail if it doesn't work
+    }
+
+    // Step 3: Show summary to user
+    console.log("✓ Workflow complete!");
+
+    let successMessage = "✓ Success! ";
+    let warningMessages = [];
+
+    if (transferStatus.success) {
+      successMessage += `Candidate ${candidateData.name} moved to Selected (ID: ${transferStatus.selected_candidate_id}). `;
+    }
+
+    if (!emailStatus.success) {
+      warningMessages.push(
+        `⚠️ Email: ${emailStatus.message}`
+      );
+    } else {
+      successMessage += "Offer letter email sent. ";
+    }
+
+    if (warningMessages.length > 0) {
+      alert(successMessage + "\n\n" + warningMessages.join("\n"));
+    } else {
+      alert(successMessage);
+    }
+
+    // Reload the table
+    loadInternships(currentType);
+  } catch (error) {
+    console.error("Error in confirmOfferLetterPaid:", error);
+    throw error;
+  }
+}
+
+async function confirmOfferLetterApproved(candidateData) {
+  try {
+    console.log("✓ Processing APPROVED candidate workflow...");
 
     // Call the confirm endpoint
     const confirmResponse = await fetch("/admin/api/confirm-offer-letter", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(currentOfferLetterData),
+      body: JSON.stringify(candidateData),
     });
 
     if (!confirmResponse.ok) {
@@ -431,17 +575,15 @@ async function confirmOfferLetter() {
     );
     alert(
       "✓ Success! Offer letter sent to " +
-        currentOfferLetterData.email +
+        candidateData.email +
         " and candidate moved to Selected table."
     );
 
     // Reload the table
     loadInternships(currentType);
-
-    currentOfferLetterData = null;
   } catch (error) {
-    console.error("Error confirming offer letter:", error);
-    alert("❌ Error: " + error.message);
+    console.error("Error in confirmOfferLetterApproved:", error);
+    throw error;
   }
 }
 

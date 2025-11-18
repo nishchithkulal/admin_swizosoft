@@ -4257,6 +4257,268 @@ def transfer_to_selected_endpoint():
 
 # ==================== END INDEPENDENT ENDPOINTS ====================
 
+# ==================== PAID INTERNSHIP INDEPENDENT ENDPOINTS ====================
+
+@app.route('/admin/api/send-paid-offer-email', methods=['POST'])
+@login_required
+def send_paid_offer_email_endpoint():
+    """Send offer letter email for paid internship independently without affecting database.
+    
+    Expects JSON:
+    {
+        "email": <recipient_email>,
+        "name": <recipient_name>,
+        "pdf_b64": "<base64_encoded_pdf>",
+        "reference_number": "<ref_no>"
+    }
+    
+    Returns:
+    {
+        "success": true/false,
+        "message": "Email sent successfully" or error message
+    }
+    
+    NOTE: This endpoint is independent and does NOT modify the database.
+    Errors here should NOT affect the data transfer process.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip()
+        name = data.get('name', '').strip()
+        pdf_b64 = data.get('pdf_b64', '')
+        reference_number = data.get('reference_number', '')
+        
+        if not all([email, name]):
+            return jsonify({'success': False, 'error': 'Missing email or name'}), 400
+        
+        # Decode PDF
+        try:
+            pdf_bytes = base64.b64decode(pdf_b64) if pdf_b64 else None
+        except Exception as e:
+            app.logger.warning(f"Could not decode PDF: {e}")
+            pdf_bytes = None
+        
+        # Send email
+        try:
+            email_sent = send_offer_letter_email(email, name, pdf_bytes, reference_number)
+            
+            if email_sent:
+                app.logger.info(f"✓ Offer letter email sent to {email} for {name} (paid)")
+                return jsonify({
+                    'success': True,
+                    'message': f'Offer letter email sent successfully to {email}'
+                }), 200
+            else:
+                app.logger.warning(f"Email send function returned False for {email}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Email send failed - service returned false'
+                }), 500
+        
+        except Exception as e:
+            app.logger.exception(f"Error sending offer letter email to {email}: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Email send error: {str(e)}'
+            }), 500
+    
+    except Exception as e:
+        app.logger.exception(f"Error in send_paid_offer_email_endpoint: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/transfer-paid-to-selected', methods=['POST'])
+@login_required
+def transfer_paid_to_selected_endpoint():
+    """Transfer paid internship candidate data to Selected table independently.
+    
+    Expects JSON:
+    {
+        "usn": <usn>,
+        "application_id": <app_id>,
+        "name": <name>,
+        "email": <email>,
+        "phone": <phone>,
+        "domain": <domain>,
+        "college": <college>,
+        "year": <year>,
+        "qualification": <qualification>,
+        "branch": <branch>,
+        "project_description": <project_description>,
+        "project_name": <project_name>,
+        "project_title": <project_title>,
+        "duration_months": <duration>,
+        "pdf_b64": "<base64_encoded_pdf>",
+        "reference_number": "<ref_no>"
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "message": "Candidate transferred to Selected table",
+        "selected_candidate_id": "<generated_id>"
+    }
+    
+    NOTE: This endpoint performs data transfer independently.
+    It should succeed even if the email endpoint fails.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        usn = data.get('usn', '').strip()
+        application_id = data.get('application_id')
+        name = data.get('name', '').strip()
+        email_val = data.get('email', '').strip()
+        phone_val = data.get('phone', '').strip()
+        domain = data.get('domain', '').strip()
+        college = data.get('college', '').strip()
+        year_val = data.get('year', '').strip()
+        qualification_val = data.get('qualification', '').strip()
+        branch_val = data.get('branch', '').strip()
+        project_description_val = data.get('project_description', '').strip()
+        project_name_val = data.get('project_name', '').strip()
+        project_title_val = data.get('project_title', '').strip()
+        duration_months = data.get('duration_months', 3)
+        pdf_b64 = data.get('pdf_b64', '')
+        reference_number = data.get('reference_number', '')
+        
+        if not all([usn, name, email_val, domain]):
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields: usn, name, email, domain'
+            }), 400
+        
+        # Decode PDF
+        try:
+            pdf_bytes = base64.b64decode(pdf_b64) if pdf_b64 else None
+        except Exception as e:
+            app.logger.warning(f"Could not decode PDF: {e}")
+            pdf_bytes = None
+        
+        # Step 1: Check if already in Selected
+        try:
+            existing_in_selected = Selected.query.filter_by(usn=usn).first()
+            
+            if existing_in_selected:
+                # Will update existing record
+                selected = existing_in_selected
+                app.logger.info(f"✓ Found existing Selected record for {usn}, updating...")
+            else:
+                # Will create new record
+                selected = Selected()
+                app.logger.info(f"✓ Creating new Selected record for {usn}...")
+            
+        except Exception as e:
+            app.logger.exception(f"Error checking Selected table: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Database error: {str(e)}'
+            }), 500
+        
+        # Step 2: Generate candidate_id if needed
+        try:
+            if not existing_in_selected or not existing_in_selected.candidate_id:
+                selected_candidate_id = generate_candidate_id(domain, db.engine)
+                if not selected_candidate_id:
+                    raise Exception("Failed to generate candidate_id")
+            else:
+                selected_candidate_id = existing_in_selected.candidate_id
+            
+            app.logger.info(f"✓ Using candidate_id: {selected_candidate_id}")
+            
+        except Exception as e:
+            app.logger.exception(f"Error generating candidate_id: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to generate candidate ID: {str(e)}'
+            }), 500
+        
+        # Step 3: Populate/Update Selected record
+        try:
+            selected.usn = usn
+            selected.candidate_id = selected_candidate_id
+            selected.name = name
+            selected.email = email_val
+            selected.phone = phone_val
+            selected.year = year_val
+            selected.qualification = qualification_val
+            selected.branch = branch_val
+            selected.college = college
+            selected.domain = domain
+            selected.roles = f"{format_domain_as_role(domain)} Intern"
+            selected.mode_of_internship = 'paid'
+            selected.project_description = project_description_val
+            selected.internship_project_name = project_name_val
+            selected.project_title = project_title_val
+            selected.approved_date = datetime.utcnow().date()
+            selected.status = 'ongoing'
+            selected.completion_date = datetime.utcnow().date()
+            selected.internship_duration = f"{duration_months} month{'s' if duration_months != 1 else ''}"
+            
+            # Store offer letter if provided
+            if pdf_bytes:
+                selected.offer_letter_pdf = pdf_bytes
+                selected.offer_letter_reference = reference_number
+                selected.offer_letter_generated_date = datetime.utcnow()
+            
+            # Add new record if not existing
+            if not existing_in_selected:
+                db.session.add(selected)
+            
+            db.session.commit()
+            app.logger.info(f"✓ Successfully transferred {usn} to Selected with ID {selected_candidate_id}")
+            
+        except Exception as e:
+            app.logger.exception(f"Error updating Selected table: {e}")
+            db.session.rollback()
+            return jsonify({
+                'success': False,
+                'error': f'Failed to transfer to Selected: {str(e)}'
+            }), 500
+        
+        # Step 4: Delete from paid_internship_application (TRANSFER, not just copy)
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            paid_table = get_resolved_table('paid_internship')
+            
+            cursor.execute(f"DELETE FROM {paid_table} WHERE id = %s", (application_id,))
+            conn.commit()
+            app.logger.info(f"✓ Deleted paid application {application_id} from {paid_table}")
+            
+            # Delete from paid_document_store
+            try:
+                cursor.execute("DELETE FROM paid_document_store WHERE paid_internship_application_id = %s", (application_id,))
+                conn.commit()
+                app.logger.info(f"✓ Deleted documents for paid application {application_id}")
+            except Exception as e:
+                app.logger.warning(f"Could not delete paid documents: {e}")
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            app.logger.warning(f"Warning: Could not delete paid application: {e}")
+            # Don't fail - the candidate is already in Selected, which is the critical part
+            app.logger.warning(f"Note: Candidate {usn} is in Selected but still in paid_internship (soft delete failed)")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully transferred {name} ({usn}) to Selected table (paid)',
+            'selected_candidate_id': selected_candidate_id
+        }), 200
+    
+    except Exception as e:
+        app.logger.exception(f"Error in transfer_paid_to_selected_endpoint: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ==================== END PAID INTERNSHIP ENDPOINTS ====================
+
 if __name__ == '__main__':
     # Ensure a secret key exists for session support
     if not app.secret_key:
