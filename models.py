@@ -29,6 +29,7 @@ class ApprovedCandidate(db.Model):
     # Professional information
     domain = db.Column(db.String(100),nullable=False)
     mode_of_interview = db.Column(db.String(20), default='online')
+    mode_of_internship = db.Column(db.String(50), nullable=True)  # free, paid, remote-based opportunity, hybrid-based opportunity, on-site based opportunity
     
     # Resume
     resume_name = db.Column(db.String(255), nullable=True)
@@ -67,6 +68,7 @@ class ApprovedCandidate(db.Model):
             'college': self.college,
             'domain': self.domain,
             'mode_of_interview': self.mode_of_interview,
+            'mode_of_internship': self.mode_of_internship,
             'resume_name': self.resume_name,
             'resume_content': self.resume_content,
             'project_document_name': self.project_document_name,

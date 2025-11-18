@@ -847,18 +847,9 @@
                   viewProfileFn(c.user_id || c.application_id || c.id);
                 profileDiv.appendChild(viewProfile);
               }
-              // Actions: Certificate, Accept, Reject
+              // Actions: Accept, Reject
               const aDiv = document.getElementById(`actions_col_${idx}`);
               if (aDiv) {
-                const cert = document.createElement("button");
-                cert.className = "action-btn cert-btn";
-                cert.textContent = "📜 Certificate";
-                cert.style.background = "#ff9800";
-                cert.onclick = () => {
-                  issueCertificate(c.user_id || c.application_id || c.id);
-                };
-                aDiv.appendChild(cert);
-
                 const accept = document.createElement("button");
                 accept.className = "action-btn accept-btn";
                 accept.textContent = "Accept";
@@ -991,9 +982,34 @@
             }
           }
 
-          // Store candidate ID and proceed to internship type selection
+          // Fetch candidate data to check mode_of_internship
+          const candidateResponse = await fetch(
+            `/admin/api/get-approved-candidate/${id}`
+          );
+          const candidateData = await candidateResponse.json();
+
+          if (!candidateData.success || !candidateData.data) {
+            alert("Error: Could not fetch candidate data");
+            return;
+          }
+
+          const candidate = candidateData.data;
+          const modeOfInternship = candidate.mode_of_internship;
+
+          // Check if mode_of_internship is set
+          if (!modeOfInternship) {
+            alert(
+              "⚠️ This person has not yet registered for interview scheduling. Please ensure they complete the interview registration first to get their internship mode assigned."
+            );
+            return;
+          }
+
+          // Auto-select internship type based on mode_of_internship
           window.pendingCandidateId = id;
-          document.getElementById("internshipTypeModal").classList.add("show");
+          window.autoSelectedInternshipType = modeOfInternship;
+
+          // Directly proceed to accept without showing modal
+          await confirmInternshipType(true);
         } catch (e) {
           alert("Error: " + e.message);
         }
@@ -1002,12 +1018,22 @@
       function closeInternshipTypeModal() {
         document.getElementById("internshipTypeModal").classList.remove("show");
         window.pendingCandidateId = null;
+        window.autoSelectedInternshipType = null;
       }
 
-      async function confirmInternshipType() {
-        const internshipType = document.getElementById(
-          "internshipTypeSelect"
-        ).value;
+      async function confirmInternshipType(isAutoSelected = false) {
+        let internshipType;
+
+        if (isAutoSelected) {
+          // Use the auto-selected type
+          internshipType = window.autoSelectedInternshipType;
+        } else {
+          // Get from dropdown
+          internshipType = document.getElementById(
+            "internshipTypeSelect"
+          ).value;
+        }
+
         const candidateId = window.pendingCandidateId;
 
         if (!internshipType) {
@@ -1020,8 +1046,10 @@
           return;
         }
 
-        // Close the modal
-        closeInternshipTypeModal();
+        // Close the modal (only needed if not auto-selected)
+        if (!isAutoSelected) {
+          closeInternshipTypeModal();
+        }
 
         // Accept the candidate with internship type
         try {

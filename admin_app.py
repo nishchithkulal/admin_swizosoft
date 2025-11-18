@@ -60,6 +60,29 @@ mail.init_app(app)
 
 # Files uploaded path (change via env or config if needed)
 UPLOAD_FOLDER = app.config.get('UPLOAD_FOLDER', 'uploads')
+
+# Helper function to delete generated files
+def cleanup_generated_file(file_path):
+    """Delete a file from the generated folder after it's been processed.
+    
+    Args:
+        file_path: Full path to the file to delete
+        
+    Returns:
+        bool: True if deleted successfully or file doesn't exist, False on error
+    """
+    try:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+            app.logger.info(f"✓ Cleaned up generated file: {file_path}")
+            print(f"✓ Cleaned up: {file_path}")
+            return True
+        return True
+    except Exception as e:
+        app.logger.warning(f"Failed to cleanup file {file_path}: {e}")
+        print(f"⚠ Warning: Could not cleanup file: {e}")
+        return False
+
 # Lightweight health endpoint so the server can be validated without DB access
 @app.route('/ping')
 def ping():
@@ -738,6 +761,7 @@ def admin_api_get_approved_candidates():
                     'college': candidate.college,
                     'domain': candidate.domain,
                     'mode_of_interview': candidate.mode_of_interview,
+                    'mode_of_internship': candidate.mode_of_internship,
                     'resume_name': candidate.resume_name,
                     'project_document_name': candidate.project_document_name,
                     'id_proof_name': candidate.id_proof_name,
@@ -1353,17 +1377,19 @@ def handle_approved_candidate_accept(approved_candidate, internship_type='free')
                 conn.close()
                 return jsonify({'success': False, 'error': f'Failed to insert into Selected table: {e}'}), 500
         
-        # Delete from approved_candidates table
+        # Delete from approved_candidates table (TRANSFER, not just copy)
         try:
-            db.session.delete(approved_candidate)
-            db.session.commit()
-            app.logger.info(f"Deleted approved candidate {usn_val} from approved_candidates table")
+            cursor.execute("DELETE FROM approved_candidates WHERE usn = %s", (usn_val,))
+            conn.commit()
+            app.logger.info(f"✓ TRANSFERRED approved candidate {usn_val} from approved_candidates to Selected table")
         except Exception as e:
             app.logger.error(f"Failed to delete approved candidate from approved_candidates: {e}")
-            db.session.rollback()
-        
-        cursor.close()
-        conn.close()
+            conn.rollback()
+            # Even if deletion fails, the candidate is already in Selected, so log warning
+            app.logger.warning(f"Warning: Candidate {usn_val} is in Selected but deletion from approved_candidates failed")
+        finally:
+            cursor.close()
+            conn.close()
         
         # Try to generate offer letter automatically
         offer_letter_ref = None
@@ -1596,6 +1622,7 @@ def admin_accept(user_id):
                     college=college_val,
                     domain=domain_val,
                     mode_of_interview=mode_of_interview_val,
+                    mode_of_internship=None,  # Will be populated later via external codebase
                     resume_name=resume_name,
                     resume_content=resume_blob,
                     project_document_name=project_document_name,
@@ -2996,17 +3023,34 @@ def generate_certificate(candidate_id):
                     if result:
                         app.logger.info(f"✓ Certificate email sent to {candidate_email}")
                         print(f"✓ Certificate email sent to {candidate_email}")
+                        
+                        # CLEANUP: Delete the generated file after successful email
+                        cleanup_generated_file(cert_file_path)
+                        if copied_path:
+                            cleanup_generated_file(copied_path)
                     else:
                         app.logger.warning(f"Failed to send certificate email to {candidate_email} - send function returned False")
                         print(f"❌ Certificate email send failed for {candidate_email}")
+                        # Still cleanup even if email failed - file is in DB as backup
+                        cleanup_generated_file(cert_file_path)
+                        if copied_path:
+                            cleanup_generated_file(copied_path)
                 except Exception as email_err:
                     app.logger.exception(f"Error sending certificate email to {candidate_email}: {email_err}")
                     print(f"❌ Exception sending certificate email: {email_err}")
                     import traceback
                     traceback.print_exc()
+                    # Cleanup even on error
+                    cleanup_generated_file(cert_file_path)
+                    if copied_path:
+                        cleanup_generated_file(copied_path)
             else:
                 app.logger.warning(f"No email found for candidate {candidate_id} - certificate not emailed")
                 print(f"❌ No email found for candidate {candidate_id}")
+                # Still cleanup the file since it's in DB
+                cleanup_generated_file(cert_file_path)
+                if copied_path:
+                    cleanup_generated_file(copied_path)
         except Exception as e:
             app.logger.error(f"Failed to store certificate in database: {e}")
             import traceback
@@ -3029,6 +3073,125 @@ def generate_certificate(candidate_id):
     except Exception as e:
         app.logger.exception(f"[CERT ERROR] {str(e)}")
         return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/admin/api/delete-generated-file/<certificate_id>', methods=['DELETE'])
+@login_required
+def delete_generated_file(certificate_id):
+    """Delete a specific generated certificate file by its certificate_id.
+    
+    This is called when user closes the certificate modal after viewing.
+    The file is already stored in the database, so it's safe to delete from disk.
+    
+    Args:
+        certificate_id: The certificate ID (e.g., CERT_2025_NOV_001)
+    """
+    try:
+        CERT_GENERATED_PATH = 'SWIZ CERTI/certificate-generator/generated'
+        
+        # Convert certificate_id to filename format (replace / with _)
+        filename = certificate_id.replace("/", "_") + ".pdf"
+        file_path = os.path.join(CERT_GENERATED_PATH, filename)
+        
+        print(f"[DEBUG] Attempting to delete: {file_path}")
+        app.logger.info(f"User requested deletion of certificate file: {file_path}")
+        
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                app.logger.info(f"✓ Successfully deleted certificate file: {filename}")
+                return jsonify({
+                    'success': True,
+                    'message': f'Certificate file deleted: {filename}',
+                    'deleted_file': filename
+                }), 200
+            except Exception as delete_err:
+                app.logger.warning(f"Failed to delete certificate file {file_path}: {delete_err}")
+                return jsonify({
+                    'success': False,
+                    'message': f'Could not delete file: {str(delete_err)}'
+                }), 500
+        else:
+            # File doesn't exist - that's fine, return success anyway
+            app.logger.info(f"Certificate file already deleted or doesn't exist: {file_path}")
+            return jsonify({
+                'success': True,
+                'message': f'Certificate file not found (already deleted)'
+            }), 200
+    
+    except Exception as e:
+        app.logger.exception(f"Error in delete-generated-file endpoint: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/admin/api/cleanup-generated-files', methods=['POST'])
+@login_required
+def cleanup_generated_files_endpoint():
+    """Cleanup old generated certificate and offer files.
+    
+    This endpoint:
+    1. Deletes all files older than 7 days from generated folders
+    2. Logs cleanup statistics
+    3. Returns summary of cleaned files
+    """
+    try:
+        import time
+        from pathlib import Path
+        
+        CERT_GENERATED_PATH = 'SWIZ CERTI/certificate-generator/generated'
+        OFFER_GENERATED_PATH = 'offer-letter-generator/generated'
+        CLEANUP_DAYS = 7  # Delete files older than this many days
+        CLEANUP_SECONDS = CLEANUP_DAYS * 24 * 3600
+        
+        deleted_files = []
+        failed_deletes = []
+        current_time = time.time()
+        
+        # Cleanup certificate files
+        if os.path.exists(CERT_GENERATED_PATH):
+            for filename in os.listdir(CERT_GENERATED_PATH):
+                file_path = os.path.join(CERT_GENERATED_PATH, filename)
+                if os.path.isfile(file_path):
+                    file_age = current_time - os.path.getmtime(file_path)
+                    if file_age > CLEANUP_SECONDS:
+                        try:
+                            os.remove(file_path)
+                            deleted_files.append(f"Certificate: {filename}")
+                            app.logger.info(f"Cleaned up old certificate: {filename}")
+                        except Exception as e:
+                            failed_deletes.append(f"Certificate {filename}: {str(e)}")
+                            app.logger.warning(f"Failed to delete certificate {filename}: {e}")
+        
+        # Cleanup offer letter files
+        if os.path.exists(OFFER_GENERATED_PATH):
+            for filename in os.listdir(OFFER_GENERATED_PATH):
+                file_path = os.path.join(OFFER_GENERATED_PATH, filename)
+                if os.path.isfile(file_path):
+                    file_age = current_time - os.path.getmtime(file_path)
+                    if file_age > CLEANUP_SECONDS:
+                        try:
+                            os.remove(file_path)
+                            deleted_files.append(f"Offer Letter: {filename}")
+                            app.logger.info(f"Cleaned up old offer letter: {filename}")
+                        except Exception as e:
+                            failed_deletes.append(f"Offer Letter {filename}: {str(e)}")
+                            app.logger.warning(f"Failed to delete offer letter {filename}: {e}")
+        
+        return jsonify({
+            'success': True,
+            'deleted_count': len(deleted_files),
+            'failed_count': len(failed_deletes),
+            'deleted_files': deleted_files,
+            'failed_deletes': failed_deletes,
+            'message': f'Cleaned up {len(deleted_files)} old files (older than {CLEANUP_DAYS} days)'
+        }), 200
+        
+    except Exception as e:
+        app.logger.exception(f"Cleanup endpoint error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/admin/api/download-certificate/<certificate_id>', methods=['GET'])
