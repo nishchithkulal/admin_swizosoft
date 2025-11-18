@@ -165,6 +165,12 @@ function updateStatus(internshipId, status, internshipType) {
     return;
   }
 
+  // For ACCEPTED status on PAID internships, show domain selection and offer letter flow
+  if (status === "ACCEPTED" && internshipType === "paid") {
+    initiatePaidInternshipAccept(internshipId);
+    return;
+  }
+
   if (
     !confirm(`Are you sure you want to mark this application as ${status}?`)
   ) {
@@ -212,6 +218,216 @@ function updateStatus(internshipId, status, internshipType) {
       console.error("Error:", error);
       alert("Error updating status");
     });
+}
+
+// Store current paid internship data for offer letter flow
+let currentPaidInternshipData = null;
+let currentOfferLetterData = null;
+
+async function initiatePaidInternshipAccept(applicationId) {
+  try {
+    console.log("🔄 Initiating paid internship accept for:", applicationId);
+
+    // Fetch the paid internship application data
+    const response = await fetch(
+      `/admin/api/get-profile/${applicationId}?type=paid`
+    );
+    if (!response.ok) {
+      throw new Error("Could not fetch application data");
+    }
+
+    const data = await response.json();
+    if (!data.success || !data.data) {
+      throw new Error("Application data not found");
+    }
+
+    const applicantData = data.data;
+
+    // Store for later use
+    currentPaidInternshipData = {
+      application_id: applicationId,
+      name: applicantData.name || "",
+      usn: applicantData.usn || applicantData.roll || `APP${applicationId}`,
+      email: applicantData.email || "",
+      college: applicantData.college || "",
+      domain: applicantData.domain || "",
+      year: applicantData.year || "",
+      qualification: applicantData.qualification || "",
+      branch: applicantData.branch || applicantData.department || "",
+      phone:
+        applicantData.phone ||
+        applicantData.mobile ||
+        applicantData.contact_number ||
+        "",
+      project_description: applicantData.project_description || "",
+      project_name:
+        applicantData.project_document || applicantData.project_name || "",
+      project_title: applicantData.project_title || "",
+    };
+
+    // Show domain selection modal (need to create this for dashboard or skip if no domain changes needed)
+    // For now, proceed directly with offer letter generation with current domain
+    await generateAndShowOfferLetterForPaid(
+      currentPaidInternshipData,
+      currentPaidInternshipData.domain
+    );
+  } catch (error) {
+    console.error("Error initiating paid internship accept:", error);
+    alert("❌ Error: " + error.message);
+  }
+}
+
+async function generateAndShowOfferLetterForPaid(applicantData, domain) {
+  try {
+    console.log(
+      "🔄 Generating offer letter for paid internship:",
+      applicantData.usn
+    );
+
+    // Show loading state
+    const modal = document.getElementById("offerLetterModal");
+    if (modal) {
+      modal.classList.add("show");
+    }
+    document.getElementById("offerLetterContainer").innerHTML =
+      "<p>Generating offer letter...</p>";
+    document.getElementById("confirmOfferBtn").style.display = "none";
+
+    // Call the new generate offer letter endpoint
+    const generateResponse = await fetch(
+      "/admin/api/generate-offer-letter-preview",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate_id: applicantData.application_id,
+          source: "paid",
+          name: applicantData.name,
+          usn: applicantData.usn,
+          college: applicantData.college,
+          email: applicantData.email,
+          domain: domain,
+          mode_of_internship: "paid",
+          internship_type: "paid",
+          duration: "3 months", // Default for paid internship
+        }),
+      }
+    );
+
+    if (!generateResponse.ok) {
+      const errorData = await generateResponse.json();
+      throw new Error(errorData.error || "Failed to generate offer letter");
+    }
+
+    const generateData = await generateResponse.json();
+    if (!generateData.success) {
+      throw new Error(generateData.error || "Offer letter generation failed");
+    }
+
+    // Store for confirmation
+    currentOfferLetterData = {
+      candidate_id: applicantData.application_id,
+      source: "paid",
+      name: applicantData.name,
+      usn: applicantData.usn,
+      email: applicantData.email,
+      college: applicantData.college,
+      domain: domain,
+      mode_of_internship: "paid",
+      internship_type: "paid",
+      duration: 3, // 3 months for paid
+      pdf_b64: generateData.pdf_data,
+      reference_number: generateData.reference_number,
+    };
+
+    // Display the PDF
+    document.getElementById(
+      "offerLetterTitle"
+    ).textContent = `Offer Letter - ${generateData.reference_number}`;
+    const container = document.getElementById("offerLetterContainer");
+    const iframe = document.createElement("iframe");
+    iframe.src = `data:application/pdf;base64,${generateData.pdf_data}`;
+    iframe.style.width = "100%";
+    iframe.style.height = "100%";
+    iframe.style.border = "none";
+    iframe.style.borderRadius = "4px";
+
+    container.innerHTML = "";
+    container.appendChild(iframe);
+
+    // Show confirm button
+    document.getElementById("confirmOfferBtn").style.display = "block";
+
+    console.log(
+      "✓ Offer letter displayed for paid internship, waiting for confirmation"
+    );
+  } catch (error) {
+    console.error("Error generating offer letter for paid internship:", error);
+    document.getElementById("offerLetterContainer").innerHTML = `
+      <div style="color: #d32f2f; padding: 2rem; text-align: center;">
+        <p>❌ Error: ${error.message}</p>
+        <p style="font-size: 0.9rem; margin-top: 1rem; color: #666;">Please try again.</p>
+      </div>
+    `;
+    document.getElementById("confirmOfferBtn").style.display = "none";
+  }
+}
+
+function closeOfferLetterModal() {
+  const modal = document.getElementById("offerLetterModal");
+  if (modal) {
+    modal.classList.remove("show");
+  }
+  currentOfferLetterData = null;
+}
+
+async function confirmOfferLetter() {
+  if (!currentOfferLetterData) {
+    alert("No offer letter data available");
+    return;
+  }
+
+  try {
+    console.log("✓ Confirming offer letter and sending email...");
+    closeOfferLetterModal();
+
+    // Show loading
+    alert("Confirming offer letter... (check console for progress)");
+
+    // Call the confirm endpoint
+    const confirmResponse = await fetch("/admin/api/confirm-offer-letter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(currentOfferLetterData),
+    });
+
+    if (!confirmResponse.ok) {
+      const errorData = await confirmResponse.json();
+      throw new Error(errorData.error || "Failed to confirm offer letter");
+    }
+
+    const confirmData = await confirmResponse.json();
+    if (!confirmData.success) {
+      throw new Error(confirmData.error || "Confirmation failed");
+    }
+
+    console.log(
+      "✓ Offer letter confirmed, email sent, candidate moved to Selected"
+    );
+    alert(
+      "✓ Success! Offer letter sent to " +
+        currentOfferLetterData.email +
+        " and candidate moved to Selected table."
+    );
+
+    // Reload the table
+    loadInternships(currentType);
+
+    currentOfferLetterData = null;
+  } catch (error) {
+    console.error("Error confirming offer letter:", error);
+    alert("❌ Error: " + error.message);
+  }
 }
 
 function viewFile(internshipId, fileType, internshipType) {

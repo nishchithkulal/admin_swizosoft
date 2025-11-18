@@ -28,7 +28,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Import and initialize SQLAlchemy
 from urllib.parse import quote_plus
-from models import db, ApprovedCandidate
+from models import db, ApprovedCandidate, Selected
 # URL-encode password to avoid parsing issues when it contains special characters
 encoded_pw = quote_plus(app.config.get('MYSQL_PASSWORD', ''))
 app.config['SQLALCHEMY_DATABASE_URI'] = (
@@ -288,28 +288,22 @@ def get_domain_code(domain_str):
     app.logger.warning(f"Unknown domain mapping for '{domain_str}' — using fallback 'XX'")
     return 'XX'
 
-def generate_candidate_id(domain_str, conn=None):
+def generate_candidate_id(domain_str, engine=None):
     """
     Generate unique candidate ID based on domain and year.
     Format: SIN25FD001 (example for Full Stack Developer in 2025)
     
     Args:
         domain_str: Name of the domain/role
-        conn: Database connection (optional; will create if not provided)
+        engine: SQLAlchemy engine (optional; will use app.engine if not provided)
     
     Returns:
         Unique candidate ID string or None if error
     """
     try:
-        should_close = False
-        if conn is None:
-            conn = get_db()
-            should_close = True
-        
-        cursor = conn.cursor(pymysql.cursors.DictCursor)
+        from datetime import datetime
         
         # Get current year (last 2 digits)
-        from datetime import datetime
         year_suffix = str(datetime.now().year)[-2:]  # e.g., '25' for 2025
         
         # Get domain code
@@ -318,19 +312,15 @@ def generate_candidate_id(domain_str, conn=None):
         # Build prefix to search for
         prefix = f"SIN{year_suffix}{domain_code}"  # e.g., "SIN25FD"
         
-        # Get the highest counter for this prefix
-        cursor.execute("""
-            SELECT candidate_id FROM Selected 
-            WHERE candidate_id LIKE %s 
-            ORDER BY candidate_id DESC 
-            LIMIT 1
-        """, (f"{prefix}%",))
+        # Query using SQLAlchemy ORM
+        last_record = Selected.query.filter(
+            Selected.candidate_id.like(f"{prefix}%")
+        ).order_by(Selected.candidate_id.desc()).first()
         
-        last_row = cursor.fetchone()
         next_counter = 1
         
-        if last_row:
-            last_id = last_row.get('candidate_id', '')
+        if last_record:
+            last_id = last_record.candidate_id
             # Extract the counter part (last 3 digits)
             try:
                 counter_str = last_id[-3:]
@@ -341,10 +331,6 @@ def generate_candidate_id(domain_str, conn=None):
         
         # Format with leading zeros (3 digits)
         candidate_id = f"{prefix}{next_counter:03d}"
-        
-        if should_close:
-            cursor.close()
-            conn.close()
         
         app.logger.info(f"Generated candidate_id: {candidate_id} for domain: {domain_str}")
         return candidate_id
@@ -492,46 +478,35 @@ def admin_get_internships():
 @app.route('/admin/api/get-selected')
 @login_required
 def admin_api_get_selected():
-    """Fetch all rows from Selected table where status = 'ongoing' using exact SQL query"""
+    """Fetch all rows from Selected table where status = 'ongoing' using SQLAlchemy"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        # Query using SQLAlchemy ORM
+        selected_candidates = Selected.query.filter_by(status='ongoing').order_by(Selected.approved_date.desc()).all()
         
-        # Execute exact query: SELECT * FROM `Selected` WHERE status = 'ongoing' ORDER BY approved_date DESC
-        try:
-            cursor.execute("SELECT * FROM `Selected` WHERE status = 'ongoing' ORDER BY approved_date DESC")
-            rows = cursor.fetchall()
-            print(f"✓ Fetched {len(rows)} rows from Selected table (status='ongoing')")
-            
-            # Convert bytes to base64 strings for JSON serialization
-            processed_rows = []
-            for row in rows:
-                if isinstance(row, dict):
-                    processed_row = {}
-                    for key, val in row.items():
-                        if isinstance(val, bytes):
-                            # Convert bytes to base64 string
-                            import base64
-                            processed_row[key] = base64.b64encode(val).decode('utf-8')
-                        else:
-                            processed_row[key] = val
-                    processed_rows.append(processed_row)
-                else:
-                    processed_rows.append(row)
-            
-            if processed_rows:
-                print(f"  First row keys: {list(processed_rows[0].keys())}")
-                
-        except Exception as e:
-            print(f"✗ Query failed: {e}")
-            processed_rows = []
+        print(f"✓ Fetched {len(selected_candidates)} rows from Selected table (status='ongoing')")
         
-        cursor.close()
-        conn.close()
+        # Convert to dictionaries with base64 encoding for binary data
+        processed_rows = []
+        for candidate in selected_candidates:
+            row_dict = candidate.to_dict()
+            
+            # Handle binary fields - convert to base64
+            if candidate.offer_letter_pdf:
+                row_dict['offer_letter_pdf'] = base64.b64encode(candidate.offer_letter_pdf).decode('utf-8')
+            if candidate.certificate_pdf:
+                row_dict['certificate_pdf'] = base64.b64encode(candidate.certificate_pdf).decode('utf-8')
+            if candidate.internship_project_content:
+                row_dict['internship_project_content'] = base64.b64encode(candidate.internship_project_content).decode('utf-8')
+            
+            processed_rows.append(row_dict)
+        
+        if processed_rows:
+            print(f"  First row keys: {list(processed_rows[0].keys())}")
         
         return jsonify({'success': True, 'data': processed_rows})
     except Exception as e:
         print(f"✗ Exception in /admin/api/get-selected: {e}")
+        app.logger.exception(f"Error in get-selected: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -540,39 +515,28 @@ def admin_api_get_selected():
 def admin_api_get_completed_candidates():
     """Fetch all rows from Selected table where status = 'completed' for certificate issuance"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        # Query using SQLAlchemy ORM
+        completed_candidates = Selected.query.filter_by(status='completed').order_by(Selected.completion_date.desc()).all()
         
-        # Execute query: SELECT * FROM Selected WHERE status = 'completed'
-        try:
-            cursor.execute("SELECT * FROM `Selected` WHERE status = 'completed' ORDER BY completion_date DESC")
-            rows = cursor.fetchall()
-            app.logger.info(f"✓ Fetched {len(rows)} completed rows from Selected table")
-            
-            # Convert bytes to base64 strings for JSON serialization
-            processed_rows = []
-            for row in rows:
-                if isinstance(row, dict):
-                    processed_row = {}
-                    for key, val in row.items():
-                        if isinstance(val, bytes):
-                            import base64
-                            processed_row[key] = base64.b64encode(val).decode('utf-8')
-                        else:
-                            processed_row[key] = val
-                    processed_rows.append(processed_row)
-                else:
-                    processed_rows.append(row)
-            
-            if processed_rows:
-                app.logger.info(f"  Total processed rows: {len(processed_rows)}")
-                
-        except Exception as e:
-            app.logger.error(f"✗ Query failed: {e}")
-            processed_rows = []
+        app.logger.info(f"✓ Fetched {len(completed_candidates)} completed rows from Selected table")
         
-        cursor.close()
-        conn.close()
+        # Convert to dictionaries with base64 encoding for binary data
+        processed_rows = []
+        for candidate in completed_candidates:
+            row_dict = candidate.to_dict()
+            
+            # Handle binary fields - convert to base64
+            if candidate.offer_letter_pdf:
+                row_dict['offer_letter_pdf'] = base64.b64encode(candidate.offer_letter_pdf).decode('utf-8')
+            if candidate.certificate_pdf:
+                row_dict['certificate_pdf'] = base64.b64encode(candidate.certificate_pdf).decode('utf-8')
+            if candidate.internship_project_content:
+                row_dict['internship_project_content'] = base64.b64encode(candidate.internship_project_content).decode('utf-8')
+            
+            processed_rows.append(row_dict)
+        
+        if processed_rows:
+            app.logger.info(f"  Total processed rows: {len(processed_rows)}")
         
         return jsonify({'success': True, 'data': processed_rows})
     except Exception as e:
@@ -593,19 +557,15 @@ def admin_api_send_report_form_email():
         if not usn or not email or not name:
             return jsonify({'success': False, 'error': 'Missing required fields: usn, email, name'}), 400
 
-        # Update Selected table status to 'completed'
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE `Selected` SET status = %s WHERE usn = %s', ('completed', usn))
-        conn.commit()
-        rows_affected = cursor.rowcount
-        cursor.close()
-
-        if rows_affected == 0:
-            conn.close()
+        # Update Selected table status to 'completed' using SQLAlchemy
+        candidate = Selected.query.filter_by(usn=usn).first()
+        
+        if not candidate:
             return jsonify({'success': False, 'error': f'No candidate found with USN: {usn}'}), 404
-
-        conn.close()
+        
+        candidate.status = 'completed'
+        db.session.commit()
+        app.logger.info(f"✓ Updated Selected candidate {usn} status to 'completed'")
 
         # Send email with report form link
         try:
@@ -627,6 +587,7 @@ def admin_api_send_report_form_email():
 
     except Exception as e:
         app.logger.error(f"✗ Exception in /admin/api/send-report-form-email: {e}")
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -681,47 +642,41 @@ def admin_api_get_selected_candidate(identifier):
     """Fetch a single Selected record by application_id, user_id (numeric) or USN (string)."""
     try:
         conn = get_db()
-        cursor = conn.cursor()
-
-        # Try numeric match first
-        row = None
+        # Try to find the candidate using SQLAlchemy ORM
+        candidate = None
+        
         try:
             if identifier.isdigit():
-                # Try application_id or user_id numeric match
-                cursor.execute('SELECT * FROM `Selected` WHERE application_id = %s LIMIT 1', (int(identifier),))
-                row = cursor.fetchone()
-                if not row:
-                    cursor.execute('SELECT * FROM `Selected` WHERE user_id = %s LIMIT 1', (int(identifier),))
-                    row = cursor.fetchone()
+                # Try by numeric ID
+                candidate = Selected.query.filter_by(id=int(identifier)).first()
         except Exception:
-            row = None
-
-        # If not found and identifier is non-numeric, try USN match
-        if not row:
+            pass
+        
+        # If not found by ID, try by USN
+        if not candidate:
             try:
-                cursor.execute('SELECT * FROM `Selected` WHERE usn = %s LIMIT 1', (identifier,))
-                row = cursor.fetchone()
+                candidate = Selected.query.filter_by(usn=identifier).first()
             except Exception:
-                row = None
-
-        cursor.close()
-        conn.close()
-
-        if not row:
+                pass
+        
+        if not candidate:
             return jsonify({'success': False, 'error': 'Selected candidate not found'}), 404
 
-        # Convert bytes to base64 for any binary fields
-        processed = {}
-        for k, v in (row.items() if isinstance(row, dict) else []):
-            if isinstance(v, bytes):
-                import base64
-                processed[k] = base64.b64encode(v).decode('utf-8')
-            else:
-                processed[k] = v
+        # Convert to dictionary with base64 encoding for binary fields
+        processed = candidate.to_dict()
+        
+        # Handle binary fields
+        if candidate.offer_letter_pdf:
+            processed['offer_letter_pdf'] = base64.b64encode(candidate.offer_letter_pdf).decode('utf-8')
+        if candidate.certificate_pdf:
+            processed['certificate_pdf'] = base64.b64encode(candidate.certificate_pdf).decode('utf-8')
+        if candidate.internship_project_content:
+            processed['internship_project_content'] = base64.b64encode(candidate.internship_project_content).decode('utf-8')
 
         return jsonify({'success': True, 'data': processed})
     except Exception as e:
         print(f"✗ Exception in /admin/api/get-selected-candidate: {e}")
+        app.logger.exception(f"Error in get-selected-candidate: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1292,9 +1247,6 @@ def _fetch_applicant_contact(internship_id, internship_type='free'):
 def handle_approved_candidate_accept(approved_candidate, internship_type='free'):
     """Handle acceptance of an approved candidate - transfer to Selected table and generate offer letter"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
         # Extract candidate details
         usn_val = approved_candidate.usn
         name_val = approved_candidate.name
@@ -1310,86 +1262,81 @@ def handle_approved_candidate_accept(approved_candidate, internship_type='free')
         # Create role: "domain name Intern"
         role_val = f"{domain_val} Intern" if domain_val else "Intern"
         
-        # Check if already in Selected (avoid duplicates)
-        cursor.execute("SELECT usn FROM Selected WHERE usn = %s LIMIT 1", (usn_val,))
-        exists = cursor.fetchone()
-        
-        # Generate candidate_id
-        candidate_id = generate_candidate_id(domain_val, conn)
-        
         # Determine duration based on internship type
         duration_months = 1
         if internship_type in ('paid', 'remote-based opportunity', 'hybrid-based opportunity', 'on-site based opportunity'):
             duration_months = 3  # Default 3 months for paid/specified types
         
-        if exists:
+        # Convert duration_months to internship_duration string
+        internship_duration_map = {
+            1: '1 month',
+            2: '2 months',
+            3: '3 months',
+            4: '4 months'
+        }
+        internship_duration = internship_duration_map.get(duration_months, '3 months')
+        
+        # Generate candidate_id
+        candidate_id = generate_candidate_id(domain_val, db.engine)
+        
+        # Check if already in Selected (try by USN)
+        existing_in_selected = Selected.query.filter_by(usn=usn_val).first()
+        
+        if existing_in_selected:
             # Update existing record
-            try:
-                update_sql = """UPDATE Selected SET
-                    name = %s,
-                    email = %s,
-                    phone = %s,
-                    year = %s,
-                    qualification = %s,
-                    branch = %s,
-                    college = %s,
-                    domain = %s,
-                    roles = %s,
-                    approved_date = CURDATE(),
-                    status = 'ongoing',
-                    completion_date = DATE_ADD(CURDATE(), INTERVAL %s MONTH),
-                    candidate_id = %s,
-                    mode_of_internship = %s
-                    WHERE usn = %s"""
-                
-                cursor.execute(update_sql, (
-                    name_val, email_val, phone_val,
-                    year_val, qualification_val, branch_val, college_val, domain_val,
-                    role_val, duration_months, candidate_id, internship_type, usn_val
-                ))
-                conn.commit()
-                app.logger.info(f"Updated Selected record for approved candidate {usn_val}")
-            except Exception as e:
-                app.logger.error(f"Failed to update approved candidate in Selected: {e}")
-                conn.rollback()
-                cursor.close()
-                conn.close()
-                return jsonify({'success': False, 'error': f'Failed to update Selected table: {e}'}), 500
+            existing_in_selected.name = name_val
+            existing_in_selected.email = email_val
+            existing_in_selected.phone = phone_val
+            existing_in_selected.year = year_val
+            existing_in_selected.qualification = qualification_val
+            existing_in_selected.branch = branch_val
+            existing_in_selected.college = college_val
+            existing_in_selected.domain = domain_val
+            existing_in_selected.roles = role_val
+            existing_in_selected.approved_date = datetime.utcnow().date()
+            existing_in_selected.status = 'ongoing'
+            existing_in_selected.completion_date = datetime.utcnow().date()
+            existing_in_selected.candidate_id = candidate_id
+            existing_in_selected.mode_of_internship = internship_type
+            existing_in_selected.internship_duration = internship_duration
+            
+            db.session.commit()
+            app.logger.info(f"✓ Updated Selected record for approved candidate {usn_val}")
         else:
-            # Insert new record
-            try:
-                insert_sql = """INSERT INTO Selected 
-                (name, email, phone, usn, year, qualification, branch, college, domain, roles,
-                 approved_date, status, completion_date, candidate_id, mode_of_internship)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), 'ongoing', DATE_ADD(CURDATE(), INTERVAL %s MONTH), %s, %s)"""
-                
-                cursor.execute(insert_sql, (
-                    name_val, email_val, phone_val, usn_val, year_val,
-                    qualification_val, branch_val, college_val, domain_val,
-                    role_val, duration_months, candidate_id, internship_type
-                ))
-                conn.commit()
-                app.logger.info(f"Inserted approved candidate {usn_val} into Selected with ID {candidate_id}")
-            except Exception as e:
-                app.logger.error(f"Failed to insert approved candidate into Selected: {e}")
-                conn.rollback()
-                cursor.close()
-                conn.close()
-                return jsonify({'success': False, 'error': f'Failed to insert into Selected table: {e}'}), 500
+            # Create and insert new record into Selected
+            selected_candidate = Selected(
+                usn=usn_val,
+                name=name_val,
+                email=email_val,
+                phone=phone_val,
+                year=year_val,
+                qualification=qualification_val,
+                branch=branch_val,
+                college=college_val,
+                domain=domain_val,
+                roles=role_val,
+                approved_date=datetime.utcnow().date(),
+                status='ongoing',
+                completion_date=datetime.utcnow().date(),
+                candidate_id=candidate_id,
+                mode_of_internship=internship_type,
+                internship_duration=internship_duration
+            )
+            
+            db.session.add(selected_candidate)
+            db.session.commit()
+            app.logger.info(f"✓ Inserted approved candidate {usn_val} into Selected with ID {candidate_id}")
         
         # Delete from approved_candidates table (TRANSFER, not just copy)
         try:
-            cursor.execute("DELETE FROM approved_candidates WHERE usn = %s", (usn_val,))
-            conn.commit()
+            db.session.delete(approved_candidate)
+            db.session.commit()
             app.logger.info(f"✓ TRANSFERRED approved candidate {usn_val} from approved_candidates to Selected table")
         except Exception as e:
             app.logger.error(f"Failed to delete approved candidate from approved_candidates: {e}")
-            conn.rollback()
+            db.session.rollback()
             # Even if deletion fails, the candidate is already in Selected, so log warning
             app.logger.warning(f"Warning: Candidate {usn_val} is in Selected but deletion from approved_candidates failed")
-        finally:
-            cursor.close()
-            conn.close()
         
         # Try to generate offer letter automatically
         offer_letter_ref = None
@@ -1452,6 +1399,7 @@ def handle_approved_candidate_accept(approved_candidate, internship_type='free')
     
     except Exception as e:
         app.logger.exception(f"Error handling approved candidate acceptance: {e}")
+        db.session.rollback()
         return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 @app.route('/accept/<int:user_id>', methods=['POST'])
@@ -2923,53 +2871,39 @@ def generate_certificate(candidate_id):
     to locate the Selected record to store certificate.
     """
     try:
-        # Lookup candidate in Selected table (primary source for certificate details)
-        conn = get_db()
-        cursor = conn.cursor()
-        row = None
-        usn_for_storage = None
+        # Lookup candidate in Selected table using SQLAlchemy ORM
+        candidate = None
         
         try:
-            # If numeric, try application_id or user_id
             if str(candidate_id).isdigit():
-                cursor.execute('SELECT * FROM `Selected` WHERE application_id = %s LIMIT 1', (int(candidate_id),))
-                row = cursor.fetchone()
-                if not row:
-                    cursor.execute('SELECT * FROM `Selected` WHERE user_id = %s LIMIT 1', (int(candidate_id),))
-                    row = cursor.fetchone()
-
-            # If not found, try candidate_id column and USN
-            if not row:
-                try:
-                    cursor.execute('SELECT * FROM `Selected` WHERE candidate_id = %s LIMIT 1', (candidate_id,))
-                    row = cursor.fetchone()
-                except Exception:
-                    row = row
-            if not row:
-                try:
-                    cursor.execute('SELECT * FROM `Selected` WHERE usn = %s LIMIT 1', (candidate_id,))
-                    row = cursor.fetchone()
-                except Exception:
-                    row = row
-        finally:
+                # Try by id first
+                candidate = Selected.query.filter_by(id=int(candidate_id)).first()
+        except Exception:
+            pass
+        
+        # If not found, try by candidate_id column
+        if not candidate:
             try:
-                cursor.close()
+                candidate = Selected.query.filter_by(candidate_id=candidate_id).first()
             except Exception:
                 pass
+        
+        # If not found, try by USN
+        if not candidate:
             try:
-                conn.close()
+                candidate = Selected.query.filter_by(usn=candidate_id).first()
             except Exception:
                 pass
 
-        if not row:
+        if not candidate:
             app.logger.warning(f"Selected lookup failed for identifier: {candidate_id}")
             return jsonify({'success': False, 'error': 'Candidate not found in Selected table'}), 404
 
-        # Extract name from Selected row and get USN for database storage
-        candidate_name = (row.get('name') or '').strip().upper()
-        usn_for_storage = row.get('usn', '')
-        candidate_id_val = row.get('candidate_id', '')
-        candidate_email = row.get('email', '')
+        # Extract name from Selected record
+        candidate_name = (candidate.name or '').strip().upper()
+        usn_for_storage = candidate.usn or ''
+        candidate_id_val = candidate.candidate_id or ''
+        candidate_email = candidate.email or ''
         
         if not candidate_name:
             return jsonify({'success': False, 'error': 'Candidate name not found'}), 400
@@ -2984,33 +2918,15 @@ def generate_certificate(candidate_id):
         with open(cert_file_path, 'rb') as f:
             pdf_bytes = f.read()
         
-        # Store certificate in database
+        # Store certificate in database using SQLAlchemy
         try:
-            conn = get_db()
-            cursor = conn.cursor()
+            # Update the Selected record with certificate data
+            candidate.certificate_pdf = pdf_bytes
+            candidate.certificate_id = certificate_id
+            candidate.certificate_generated_date = datetime.utcnow()
+            db.session.commit()
             
-            # Use USN for storage, fall back to candidate_id if USN is empty
-            lookup_value = usn_for_storage if usn_for_storage else candidate_id_val
-            lookup_column = 'usn' if usn_for_storage else 'candidate_id'
-            
-            if not lookup_value:
-                app.logger.warning(f"Both USN and candidate_id are empty for certificate storage")
-                cursor.close()
-                conn.close()
-                return jsonify({'success': False, 'error': 'Cannot store certificate - no valid identifier'}), 500
-            
-            update_sql = f"""UPDATE Selected SET 
-                certificate_pdf = %s,
-                certificate_id = %s,
-                certificate_generated_date = NOW()
-                WHERE {lookup_column} = %s"""
-            
-            cursor.execute(update_sql, (pdf_bytes, certificate_id, lookup_value))
-            conn.commit()
-            app.logger.info(f"Stored certificate {certificate_id} in database for {lookup_column}={lookup_value}")
-            
-            cursor.close()
-            conn.close()
+            app.logger.info(f"✓ Stored certificate {certificate_id} in database for USN={usn_for_storage}")
             
             # Send certificate via email
             if candidate_email:
@@ -3053,6 +2969,7 @@ def generate_certificate(candidate_id):
                     cleanup_generated_file(copied_path)
         except Exception as e:
             app.logger.error(f"Failed to store certificate in database: {e}")
+            db.session.rollback()
             import traceback
             traceback.print_exc()
             # Don't fail - certificate was still generated and stored on disk
@@ -3708,6 +3625,328 @@ def admin_download_offer_letter(usn):
         
     except Exception as e:
         app.logger.error(f"Error downloading offer letter: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/generate-offer-letter-preview', methods=['POST'])
+@login_required
+def generate_offer_letter_preview():
+    """Generate offer letter PDF preview after domain selection/confirmation.
+    
+    Expects JSON:
+    {
+        "candidate_id": <approved_candidate_id or paid_app_id>,
+        "source": "approved" or "paid",  # which table to get data from
+        "domain": <domain_value>,  # the final domain (after admin choice)
+        "name": <name>,
+        "usn": <usn>,
+        "college": <college>,
+        "email": <email>,
+        "mode_of_internship": <mode>,  # for approved_candidates (remote-based opportunity, etc)
+        "internship_type": "free" or "paid",  # for naming/email purposes
+        "duration": <duration_str>  # e.g. "3 months"
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "pdf_data": "<base64_encoded_pdf>",
+        "reference_number": "<ref_no>",
+        "filename": "<filename>"
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Extract data
+        candidate_id = data.get('candidate_id')
+        source = data.get('source', 'approved')  # 'approved' or 'paid'
+        name = data.get('name', '').strip()
+        usn = data.get('usn', '').strip()
+        college = data.get('college', '').strip()
+        email = data.get('email', '').strip()
+        domain = data.get('domain', '').strip()
+        mode_of_internship = data.get('mode_of_internship', 'free')
+        internship_type = data.get('internship_type', 'free')
+        duration = data.get('duration', '3 months').strip()
+        
+        # Validate required fields
+        if not all([name, usn, college, email, domain]):
+            return jsonify({'success': False, 'error': 'Missing required fields: name, usn, college, email, domain'}), 400
+        
+        # Create role: "domain Intern"
+        role = f"{domain} Intern"
+        
+        app.logger.info(f"Generating offer letter preview for {usn} ({name}) - Domain: {domain}")
+        
+        # Generate offer letter PDF
+        try:
+            pdf_output, ref_no = generate_offer_pdf(name, usn, college, email, role, duration, internship_type)
+            
+            if not pdf_output or not ref_no:
+                return jsonify({'success': False, 'error': 'Failed to generate offer letter PDF'}), 500
+            
+            # Get PDF bytes and encode to base64
+            pdf_bytes = pdf_output.getvalue()
+            pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+            
+            # Generate filename
+            filename = f"OfferLetter_{usn}_{ref_no.replace('/', '_')}.pdf"
+            
+            app.logger.info(f"✓ Offer letter preview generated for {usn} - Ref: {ref_no}")
+            
+            return jsonify({
+                'success': True,
+                'pdf_data': pdf_b64,
+                'reference_number': ref_no,
+                'filename': filename,
+                'message': 'Offer letter generated successfully'
+            }), 200
+            
+        except Exception as e:
+            app.logger.exception(f"Error generating offer letter PDF: {e}")
+            return jsonify({'success': False, 'error': f'PDF generation failed: {str(e)}'}), 500
+    
+    except Exception as e:
+        app.logger.exception(f"Error in generate_offer_letter_preview: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/api/confirm-offer-letter', methods=['POST'])
+@login_required
+def confirm_offer_letter():
+    """Confirm and send offer letter, then transfer candidate data to Selected table.
+    
+    Expects JSON:
+    {
+        "candidate_id": <id>,
+        "source": "approved" or "paid",
+        "name": <name>,
+        "usn": <usn>,
+        "email": <email>,
+        "domain": <domain>,
+        "college": <college>,
+        "mode_of_internship": <mode>,  # for approved
+        "internship_type": "free" or "paid",
+        "duration": <duration_in_months>,
+        "pdf_b64": "<base64_encoded_pdf>",
+        "reference_number": "<ref_no>"
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "message": "Offer letter sent and candidate transferred to Selected",
+        "candidate_id": "<generated_id_in_selected>"
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        candidate_id = data.get('candidate_id')
+        source = data.get('source', 'approved')  # 'approved' or 'paid'
+        name = data.get('name', '').strip()
+        usn = data.get('usn', '').strip()
+        email = data.get('email', '').strip()
+        domain = data.get('domain', '').strip()
+        college = data.get('college', '').strip()
+        mode_of_internship = data.get('mode_of_internship', 'free')
+        internship_type = data.get('internship_type', 'free')
+        duration_months = data.get('duration', 3)
+        pdf_b64 = data.get('pdf_b64', '')
+        reference_number = data.get('reference_number', '')
+        
+        if not all([candidate_id, usn, email]):
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+        
+        app.logger.info(f"Confirming offer letter for {usn} ({name}) from source: {source}")
+        
+        # Decode PDF
+        try:
+            pdf_bytes = base64.b64decode(pdf_b64) if pdf_b64 else None
+        except Exception as e:
+            app.logger.warning(f"Could not decode PDF: {e}")
+            pdf_bytes = None
+        
+        # Step 1: Send email with offer letter
+        try:
+            email_sent = send_offer_letter_email(email, name, pdf_bytes, reference_number)
+            app.logger.info(f"✓ Offer letter email sent to {email} for {usn}")
+        except Exception as e:
+            app.logger.warning(f"Error sending email: {e}")
+            email_sent = False
+        
+        # Step 2: Move from source table to Selected
+        try:
+            if source == 'approved':
+                # Get ApprovedCandidate record
+                approved_candidate = ApprovedCandidate.query.filter_by(usn=usn).first()
+                
+                if not approved_candidate:
+                    return jsonify({'success': False, 'error': f'Approved candidate not found with USN: {usn}'}), 404
+                
+                # Check if already in Selected
+                existing_in_selected = Selected.query.filter_by(usn=usn).first()
+                
+                # Generate candidate_id for Selected
+                selected_candidate_id = generate_candidate_id(domain, db.engine)
+                
+                # Create/Update Selected record
+                if existing_in_selected:
+                    selected = existing_in_selected
+                else:
+                    selected = Selected()
+                
+                # Populate fields from approved candidate
+                selected.usn = usn
+                selected.candidate_id = selected_candidate_id
+                selected.name = name
+                selected.email = email
+                selected.phone = approved_candidate.phone_number or ''
+                selected.year = approved_candidate.year or ''
+                selected.qualification = approved_candidate.qualification or ''
+                selected.branch = approved_candidate.branch or ''
+                selected.college = college
+                selected.domain = domain
+                selected.roles = f"{domain} Intern" if domain else "Intern"
+                selected.mode_of_internship = mode_of_internship
+                selected.approved_date = datetime.utcnow().date()
+                selected.status = 'ongoing'
+                selected.completion_date = datetime.utcnow().date()
+                selected.internship_duration = f"{duration_months} month{'s' if duration_months != 1 else ''}"
+                
+                # Store offer letter
+                if pdf_bytes:
+                    selected.offer_letter_pdf = pdf_bytes
+                    selected.offer_letter_reference = reference_number
+                    selected.offer_letter_generated_date = datetime.utcnow()
+                
+                if not existing_in_selected:
+                    db.session.add(selected)
+                
+                db.session.commit()
+                
+                app.logger.info(f"✓ Moved approved candidate {usn} to Selected with ID {selected_candidate_id}")
+                
+                # Delete from approved_candidates
+                try:
+                    db.session.delete(approved_candidate)
+                    db.session.commit()
+                    app.logger.info(f"✓ Deleted approved candidate {usn} from approved_candidates table")
+                except Exception as e:
+                    app.logger.warning(f"Could not delete from approved_candidates: {e}")
+                
+                final_candidate_id = selected_candidate_id
+                
+            elif source == 'paid':
+                # Get data from paid_internship_application table
+                conn = get_db()
+                cursor = conn.cursor()
+                
+                try:
+                    paid_table = get_resolved_table('paid_internship')
+                    cursor.execute(f"SELECT * FROM {paid_table} WHERE id = %s LIMIT 1", (candidate_id,))
+                    paid_row = cursor.fetchone()
+                    
+                    if not paid_row:
+                        cursor.close()
+                        conn.close()
+                        return jsonify({'success': False, 'error': f'Paid application not found with ID: {candidate_id}'}), 404
+                    
+                    row_map = {k.lower(): v for k, v in (paid_row.items() if isinstance(paid_row, dict) else [])}
+                    
+                    # Generate candidate_id
+                    selected_candidate_id = generate_candidate_id(domain, conn)
+                    
+                    # Check if already in Selected
+                    cursor.execute("SELECT id FROM Selected WHERE usn = %s LIMIT 1", (usn,))
+                    existing_in_selected = cursor.fetchone()
+                    
+                    # Prepare data for insertion/update
+                    project_description = row_map.get('project_description', '')
+                    project_name = row_map.get('project_document', '') or row_map.get('project_name', '')
+                    project_title = row_map.get('project_title', '') or project_name
+                    
+                    insert_sql = """INSERT INTO Selected 
+                    (candidate_id, name, email, phone, usn, year, qualification, branch, college, domain, roles,
+                     project_description, internship_project_name, project_title,
+                     approved_date, status, completion_date, resend_count, mode_of_internship, 
+                     internship_duration, offer_letter_pdf, offer_letter_reference, offer_letter_generated_date)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURDATE(), %s, DATE_ADD(CURDATE(), INTERVAL %s MONTH), %s, %s, %s, %s, %s, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        name=VALUES(name), email=VALUES(email), domain=VALUES(domain), roles=VALUES(roles),
+                        offer_letter_pdf=VALUES(offer_letter_pdf), offer_letter_reference=VALUES(offer_letter_reference),
+                        offer_letter_generated_date=NOW()"""
+                    
+                    cursor.execute(insert_sql, (
+                        selected_candidate_id, name, email,
+                        row_map.get('phone') or row_map.get('mobile') or row_map.get('contact_number', ''),
+                        usn,
+                        row_map.get('year') or row_map.get('sem', ''),
+                        row_map.get('qualification', ''),
+                        row_map.get('branch') or row_map.get('department', ''),
+                        college,
+                        domain,
+                        f"{domain} Intern",
+                        project_description,
+                        project_name,
+                        project_title,
+                        'ongoing', duration_months, 0,
+                        internship_type,  # mode_of_internship
+                        pdf_bytes,
+                        reference_number
+                    ))
+                    conn.commit()
+                    
+                    app.logger.info(f"✓ Moved paid applicant {usn} to Selected with ID {selected_candidate_id}")
+                    
+                    # Delete from paid_internship_application
+                    try:
+                        cursor.execute(f"DELETE FROM {paid_table} WHERE id = %s", (candidate_id,))
+                        conn.commit()
+                        app.logger.info(f"✓ Deleted paid application {candidate_id} from {paid_table}")
+                    except Exception as e:
+                        app.logger.warning(f"Could not delete paid application: {e}")
+                    
+                    # Delete from paid_document_store
+                    try:
+                        cursor.execute("DELETE FROM paid_document_store WHERE paid_internship_application_id = %s", (candidate_id,))
+                        conn.commit()
+                        app.logger.info(f"✓ Deleted documents for paid application {candidate_id}")
+                    except Exception as e:
+                        app.logger.warning(f"Could not delete paid documents: {e}")
+                    
+                    cursor.close()
+                    conn.close()
+                    
+                    final_candidate_id = selected_candidate_id
+                    
+                except Exception as e:
+                    cursor.close()
+                    conn.close()
+                    app.logger.exception(f"Error processing paid internship: {e}")
+                    return jsonify({'success': False, 'error': str(e)}), 500
+            
+            else:
+                return jsonify({'success': False, 'error': f'Invalid source: {source}'}), 400
+        
+        except Exception as e:
+            app.logger.exception(f"Error transferring candidate: {e}")
+            return jsonify({'success': False, 'error': f'Transfer failed: {str(e)}'}), 500
+        
+        return jsonify({
+            'success': True,
+            'message': 'Offer letter confirmed, email sent, and candidate transferred to Selected',
+            'candidate_id': final_candidate_id,
+            'email_sent': email_sent
+        }), 200
+    
+    except Exception as e:
+        app.logger.exception(f"Error in confirm_offer_letter: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

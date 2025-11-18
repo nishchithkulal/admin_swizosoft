@@ -4,258 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Approved Candidates - Swizosoft</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/admin-unified.css') }}"
+    />
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      html {
-        overflow-y: scroll;
-      }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          sans-serif;
-        background: #f0f2f5;
-        color: #333;
-        padding-top: 70px;
-      }
-      .navbar {
-        background: #0066cc;
-        padding: 1rem 0;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 100;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        width: 100%;
-      }
-      .navbar-container {
-        max-width: 100%;
-        margin: 0 auto;
-        padding: 0 2rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-        width: 100%;
-      }
-      .navbar-brand {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        color: white;
-        font-size: 1.5rem;
-        font-weight: 700;
-        flex-shrink: 0;
-      }
-      .logo-icon {
-        font-size: 1.8rem;
-      }
-      .navbar-menu {
-        display: flex;
-        gap: 0.8rem;
-        align-items: center;
-        margin-left: auto;
-        flex-wrap: nowrap;
-        justify-content: flex-end;
-      }
-      .nav-link {
-        color: white;
-        text-decoration: none;
-        padding: 0.5rem 1rem;
-        border-radius: 4px;
-        transition: all 0.3s;
-        white-space: nowrap;
-        font-size: 0.95rem;
-        background: transparent;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-      }
-      .nav-link:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.5);
-      }
-      .nav-link.active {
-        background: rgba(255, 255, 255, 0.15);
-        border-color: rgba(255, 255, 255, 0.6);
-      }
-      .container {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 2rem;
-      }
-      .page-header {
-        text-align: center;
-        margin-bottom: 2rem;
-      }
-      .page-header h1 {
-        font-size: 2.2rem;
-        color: #222;
-        margin-bottom: 0.5rem;
-      }
-      .page-header p {
-        color: #666;
-        font-size: 0.95rem;
-      }
-      .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-      }
-      .section-header h2 {
-        font-size: 1.5rem;
-        color: #222;
-      }
-      .count-badge {
-        background: #0066cc;
-        color: white;
-        padding: 0.35rem 0.85rem;
-        border-radius: 20px;
-        font-size: 0.9rem;
-        font-weight: 600;
-      }
-      .empty-state {
-        text-align: center;
-        padding: 3rem 2rem;
-        color: #999;
-        background: white;
-        border-radius: 8px;
-      }
-      .empty-state-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-        opacity: 0.5;
-      }
-      .candidates-table {
-        width: 100%;
-        border-collapse: collapse;
-        background: white;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-      }
-      .candidates-table th,
-      .candidates-table td {
-        padding: 1rem;
-        border-bottom: 1px solid #eee;
-        text-align: left;
-        font-size: 0.95rem;
-        vertical-align: middle;
-      }
-      .candidates-table thead th {
-        background: #f8f9fa;
-        font-weight: 700;
-        color: #333;
-      }
-      .candidates-table tbody tr:hover {
-        background: #f9fafb;
-      }
-      .candidates-table td:first-child {
-        font-weight: 600;
-        color: #222;
-      }
-      .action-btn {
-        padding: 0.4rem 1.1rem;
-        margin: 0 0.3rem 0 0;
-        border: none;
-        border-radius: 4px;
-        font-size: 0.95rem;
-        cursor: pointer;
-        transition: all 0.2s;
-        white-space: nowrap;
-        display: inline-block;
-      }
-      .view-btn {
-        background: #0066cc;
-        color: white;
-      }
-      .view-btn:hover {
-        background: #0052a3;
-      }
-      .edit-btn {
-        background: #ffc107;
-        color: white;
-      }
-      .edit-btn:hover {
-        background: #e0a800;
-      }
-      .accept-btn {
-        background: #28a745;
-        color: white;
-      }
-      .accept-btn:hover {
-        background: #218838;
-      }
-      .reject-btn {
-        background: #dc3545;
-        color: white;
-      }
-      .reject-btn:hover {
-        background: #c82333;
-      }
-      .modal {
-        display: none;
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.7);
-      }
-      .modal.show {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .modal-content {
-        background: white;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        width: 95vw;
-        height: 95vh;
-        display: flex;
-        flex-direction: column;
-        border-radius: 8px;
-      }
-      .modal-header {
-        background: #0066cc;
-        color: white;
-        padding: 1.5rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-shrink: 0;
-      }
-      .modal-header h3 {
-        margin: 0;
-        font-size: 1.2rem;
-      }
-      .modal-close {
-        background: rgba(255, 255, 255, 0.2);
-        border: none;
-        color: white;
-        font-size: 1.5rem;
-        cursor: pointer;
-        padding: 0;
-        width: 40px;
-        height: 40px;
-        border-radius: 4px;
-        transition: background 0.3s;
-        flex-shrink: 0;
-      }
-      .modal-close:hover {
-        background: rgba(255, 255, 255, 0.3);
-      }
-      .modal-body {
-        padding: 2rem;
-        overflow-y: auto;
-        flex-grow: 1;
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-      }
       .file-preview-img {
         max-width: 100%;
         max-height: 100%;
@@ -270,31 +23,6 @@
         white-space: pre-wrap;
         word-break: break-word;
         width: 100%;
-      }
-      @media (max-width: 768px) {
-        .navbar-menu {
-          gap: 0.5rem;
-        }
-        .nav-link {
-          padding: 0.4rem 0.6rem;
-          font-size: 0.85rem;
-        }
-        .container {
-          padding: 1rem;
-        }
-        .candidates-table th,
-        .candidates-table td {
-          padding: 0.5rem;
-          font-size: 0.85rem;
-        }
-        .action-btn {
-          padding: 0.3rem 0.6rem;
-          font-size: 0.75rem;
-        }
-        .tab-btn {
-          padding: 0.6rem 1rem;
-          font-size: 0.9rem;
-        }
       }
       #fileModal .modal-content.full-bleed {
         width: 100vw !important;
@@ -329,7 +57,12 @@
           <a href="{{ url_for('admin_job_description') }}" class="nav-link"
             >Job Description</a
           >
-          <a href="{{ url_for('admin_logout') }}" class="nav-link">Logout</a>
+          <a href="{{ url_for('admin_issue_certificate') }}" class="nav-link"
+            >Issue Certificate</a
+          >
+          <a href="{{ url_for('admin_logout') }}" class="nav-link logout-link"
+            >Logout</a
+          >
         </div>
       </div>
     </nav>
@@ -572,15 +305,15 @@
       </div>
     </div>
 
-    <!-- Certificate Modal -->
-    <div id="certificateModal" class="modal">
+    <!-- Offer Letter Modal -->
+    <div id="offerLetterModal" class="modal">
       <div
         class="modal-content"
         style="width: 90vw; height: 90vh; max-width: 1200px"
       >
         <div class="modal-header">
-          <h3 id="certificateTitle">Certificate</h3>
-          <button class="modal-close" onclick="closeCertificateModal()">
+          <h3 id="offerLetterTitle">Offer Letter Preview</h3>
+          <button class="modal-close" onclick="closeOfferLetterModal()">
             ✕
           </button>
         </div>
@@ -594,7 +327,7 @@
           "
         >
           <div
-            id="certificateContainer"
+            id="offerLetterContainer"
             style="
               width: 100%;
               height: 100%;
@@ -604,12 +337,12 @@
               justify-content: center;
             "
           >
-            <p>Loading certificate...</p>
+            <p>Loading offer letter...</p>
           </div>
           <div style="margin-top: 1rem; display: flex; gap: 1rem">
             <button
-              id="downloadCertBtn"
-              onclick="downloadCertificate()"
+              id="confirmOfferBtn"
+              onclick="confirmOfferLetter()"
               style="
                 padding: 0.6rem 1.5rem;
                 background: #28a745;
@@ -621,10 +354,10 @@
                 display: none;
               "
             >
-              📥 Download Certificate
+              ✓ Confirm & Send
             </button>
             <button
-              onclick="closeCertificateModal()"
+              onclick="closeOfferLetterModal()"
               style="
                 padding: 0.6rem 1.5rem;
                 background: #6c757d;
@@ -635,7 +368,7 @@
                 font-weight: 600;
               "
             >
-              Close
+              Cancel
             </button>
           </div>
         </div>
@@ -852,7 +585,8 @@
               if (aDiv) {
                 const accept = document.createElement("button");
                 accept.className = "action-btn accept-btn";
-                accept.textContent = "Accept";
+                accept.textContent = "✓";
+                accept.title = "Accept";
                 accept.onclick = () => {
                   // Store current candidate ID and data for domain change modal
                   window.currentAcceptCandidate = {
@@ -868,7 +602,8 @@
 
                 const rej = document.createElement("button");
                 rej.className = "action-btn reject-btn";
-                rej.textContent = "Reject";
+                rej.textContent = "✕";
+                rej.title = "Reject";
                 rej.onclick = () => {
                   if (
                     confirm(
@@ -1143,14 +878,192 @@
           return;
         }
 
-        // Close the modal
+        // Close the domain modal
         closeDomainChangeModal();
 
-        // Accept with domain change (if domain selected)
-        await adminAccept(
-          candidate.id,
+        // Now generate offer letter with the selected/kept domain
+        await generateAndShowOfferLetter(
+          candidate,
           selectedDomain || candidate.currentDomain
         );
+      }
+
+      // Store offer letter data for confirmation
+      let currentOfferLetterData = null;
+
+      async function generateAndShowOfferLetter(candidate, finalDomain) {
+        try {
+          console.log(
+            "🔄 Generating offer letter for:",
+            candidate.name,
+            "Domain:",
+            finalDomain
+          );
+
+          // Show loading state
+          showOfferLetterModal();
+          document.getElementById("offerLetterContainer").innerHTML =
+            "<p>Generating offer letter...</p>";
+          document.getElementById("confirmOfferBtn").style.display = "none";
+
+          // Get candidate details from the approved_candidates API
+          const profileResponse = await fetch(
+            `/admin/api/get-approved-candidate/${candidate.id}`
+          );
+          if (!profileResponse.ok) {
+            throw new Error("Could not fetch candidate details");
+          }
+
+          const profileData = await profileResponse.json();
+          if (!profileData.success || !profileData.data) {
+            throw new Error("Candidate data not found");
+          }
+
+          const candidateData = profileData.data;
+
+          // Call the new generate offer letter endpoint
+          const generateResponse = await fetch(
+            "/admin/api/generate-offer-letter-preview",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                candidate_id: candidate.id,
+                source: "approved",
+                name: candidateData.name,
+                usn: candidateData.usn,
+                college: candidateData.college,
+                email: candidateData.email,
+                domain: finalDomain,
+                mode_of_internship: "free",
+                internship_type: "free",
+                duration: "1 month", // Default for free internship
+              }),
+            }
+          );
+
+          if (!generateResponse.ok) {
+            const errorData = await generateResponse.json();
+            throw new Error(
+              errorData.error || "Failed to generate offer letter"
+            );
+          }
+
+          const generateData = await generateResponse.json();
+          if (!generateData.success) {
+            throw new Error(
+              generateData.error || "Offer letter generation failed"
+            );
+          }
+
+          // Store for confirmation
+          currentOfferLetterData = {
+            candidate_id: candidate.id,
+            source: "approved",
+            name: candidateData.name,
+            usn: candidateData.usn,
+            email: candidateData.email,
+            college: candidateData.college,
+            domain: finalDomain,
+            mode_of_internship: "free",
+            internship_type: "free",
+            duration: 1,
+            pdf_b64: generateData.pdf_data,
+            reference_number: generateData.reference_number,
+          };
+
+          // Display the PDF
+          document.getElementById(
+            "offerLetterTitle"
+          ).textContent = `Offer Letter - ${generateData.reference_number}`;
+          const container = document.getElementById("offerLetterContainer");
+          const iframe = document.createElement("iframe");
+          iframe.src = `data:application/pdf;base64,${generateData.pdf_data}`;
+          iframe.style.width = "100%";
+          iframe.style.height = "100%";
+          iframe.style.border = "none";
+          iframe.style.borderRadius = "4px";
+
+          container.innerHTML = "";
+          container.appendChild(iframe);
+
+          // Show confirm button
+          document.getElementById("confirmOfferBtn").style.display = "block";
+
+          console.log("✓ Offer letter displayed, waiting for confirmation");
+        } catch (error) {
+          console.error("Error generating offer letter:", error);
+          document.getElementById("offerLetterContainer").innerHTML = `
+            <div style="color: #d32f2f; padding: 2rem; text-align: center;">
+              <p>❌ Error: ${escapeHtml(error.message)}</p>
+              <p style="font-size: 0.9rem; margin-top: 1rem; color: #666;">Please try again.</p>
+            </div>
+          `;
+          document.getElementById("confirmOfferBtn").style.display = "none";
+        }
+      }
+
+      function showOfferLetterModal() {
+        document.getElementById("offerLetterModal").classList.add("show");
+      }
+
+      function closeOfferLetterModal() {
+        document.getElementById("offerLetterModal").classList.remove("show");
+        currentOfferLetterData = null;
+      }
+
+      async function confirmOfferLetter() {
+        if (!currentOfferLetterData) {
+          alert("No offer letter data available");
+          return;
+        }
+
+        try {
+          console.log("✓ Confirming offer letter and sending email...");
+          closeOfferLetterModal();
+
+          // Show loading
+          alert("Confirming offer letter... (check console for progress)");
+
+          // Call the confirm endpoint
+          const confirmResponse = await fetch(
+            "/admin/api/confirm-offer-letter",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(currentOfferLetterData),
+            }
+          );
+
+          if (!confirmResponse.ok) {
+            const errorData = await confirmResponse.json();
+            throw new Error(
+              errorData.error || "Failed to confirm offer letter"
+            );
+          }
+
+          const confirmData = await confirmResponse.json();
+          if (!confirmData.success) {
+            throw new Error(confirmData.error || "Confirmation failed");
+          }
+
+          console.log(
+            "✓ Offer letter confirmed, email sent, candidate moved to Selected"
+          );
+          alert(
+            "✓ Success! Offer letter sent to " +
+              currentOfferLetterData.email +
+              " and candidate moved to Selected table."
+          );
+
+          // Reload the table
+          loadApprovedCandidates();
+
+          currentOfferLetterData = null;
+        } catch (error) {
+          console.error("Error confirming offer letter:", error);
+          alert("❌ Error: " + error.message);
+        }
       }
 
       async function adminReject(id) {

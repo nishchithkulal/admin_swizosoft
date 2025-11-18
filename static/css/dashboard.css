@@ -1,3 +1,5 @@
+@import url("admin-unified.css");
+
 * {
   margin: 0;
   padding: 0;
@@ -14,11 +16,15 @@ body {
 
 /* ===== NAVBAR ===== */
 .navbar {
-  background: #0066cc;
+  background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  position: sticky;
+  position: fixed;
   top: 0;
   z-index: 100;
+  left: 0;
+  right: 0;
+  width: 100%;
+  padding: 1rem 0;
 }
 
 .navbar-container {
@@ -27,7 +33,9 @@ body {
   align-items: center;
   max-width: 100%;
   margin: 0 auto;
-  padding: 15px 30px;
+  padding: 0 2rem;
+  gap: 1rem;
+  width: 100%;
 }
 
 .navbar-brand {
@@ -36,6 +44,7 @@ body {
   gap: 12px;
   text-decoration: none;
   color: white;
+  flex-shrink: 0;
 }
 
 .logo-icon {
@@ -53,40 +62,46 @@ body {
 .navbar-menu {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
 }
 
 .nav-link {
   color: white;
   text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 4px;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
   font-weight: 500;
   transition: all 0.3s ease;
-  font-size: 14px;
+  font-size: 0.95rem;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: inline-block;
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
   color: white;
+  transform: translateY(-2px);
 }
 
 .nav-link.active {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
 }
 
 .logout-link {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(220, 53, 69, 0.3);
+  border: 1px solid rgba(220, 53, 69, 0.5);
 }
 
 .logout-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(220, 53, 69, 0.5);
+  border-color: rgba(220, 53, 69, 0.7);
 }
 
 /* ===== DASHBOARD CONTAINER ===== */
@@ -94,6 +109,7 @@ body {
   max-width: 100%; /* use full viewport width to match screenshot */
   margin: 0 auto;
   padding: 60px 80px; /* generous side padding */
+  margin-top: 0;
 }
 
 .dashboard-container.full-width {
@@ -111,11 +127,13 @@ body {
   color: #1a1a1a;
   margin-bottom: 8px;
   font-weight: 700;
+  letter-spacing: -0.5px;
 }
 
 .page-header p {
   font-size: 16px;
   color: #666;
+  font-weight: 400;
 }
 
 /* ===== INTERNSHIP SELECTOR ===== */
@@ -137,12 +155,34 @@ body {
   cursor: pointer;
   transition: all 0.3s ease;
   color: #333;
+  position: relative;
+  overflow: hidden;
+}
+
+.selector-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 102, 204, 0.05);
+  transition: left 0.3s ease;
+  z-index: 0;
+}
+
+.selector-btn {
+  z-index: 1;
 }
 
 .selector-btn:hover {
   border-color: #0066cc;
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 102, 204, 0.1);
+  box-shadow: 0 6px 20px rgba(0, 102, 204, 0.15);
+}
+
+.selector-btn:hover::before {
+  left: 0;
 }
 
 .selector-btn.active {
@@ -190,8 +230,8 @@ body {
 /* ===== TABLE LAYOUT ===== */
 .table-container {
   width: 100%;
-  /* Allow the table to expand naturally and avoid an inner scrollbar */
-  overflow-x: visible;
+  /* Allow the table to expand naturally with horizontal scroll */
+  overflow-x: auto;
   background: transparent; /* let the table itself be the white card */
   border-radius: 0;
   box-shadow: none;
@@ -213,7 +253,7 @@ body {
   background: #ffffff;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 6px 20px rgba(12, 30, 44, 0.06);
+  box-shadow: 0 6px 20px rgba(12, 30, 44, 0.08);
 }
 
 /* Ensure consistent fixed layout and wrapping to prevent horizontal scrolling */
@@ -222,7 +262,7 @@ body {
 .internship-table {
   table-layout: fixed;
   width: 100%;
-  max-width: 1400px; /* increased to accommodate View Profile column */
+  max-width: 1800px; /* increased to accommodate all columns and buttons */
   margin: 0 auto; /* center when there's extra space */
 }
 
@@ -656,11 +696,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
   color: white;
   padding: 1rem 1.5rem;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
   min-height: 60px;
   gap: 1rem;
@@ -669,12 +709,13 @@ body {
 .modal-header h3 {
   margin: 0;
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 700;
   color: white;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex-grow: 1;
+  letter-spacing: -0.2px;
 }
 
 /* Modal Actions */
@@ -687,7 +728,7 @@ body {
 
 /* Download Button */
 .modal-download-btn {
-  background: #28a745;
+  background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
   color: white;
   border: none;
   padding: 0.5rem 1rem;
@@ -704,7 +745,7 @@ body {
 }
 
 .modal-download-btn:hover {
-  background: #218838;
+  background: linear-gradient(135deg, #1e7e34 0%, #156427 100%);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
 }

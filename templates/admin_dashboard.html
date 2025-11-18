@@ -181,6 +181,77 @@
       </div>
     </div>
 
+    <!-- Offer Letter Modal -->
+    <div id="offerLetterModal" class="modal">
+      <div
+        class="modal-content"
+        style="width: 90vw; height: 90vh; max-width: 1200px"
+      >
+        <div class="modal-header">
+          <h3 id="offerLetterTitle">Offer Letter Preview</h3>
+          <button class="modal-close" onclick="closeOfferLetterModal()">
+            ✕
+          </button>
+        </div>
+        <div
+          class="modal-body"
+          style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+          "
+        >
+          <div
+            id="offerLetterContainer"
+            style="
+              width: 100%;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            "
+          >
+            <p>Loading offer letter...</p>
+          </div>
+          <div style="margin-top: 1rem; display: flex; gap: 1rem">
+            <button
+              id="confirmOfferBtn"
+              onclick="confirmOfferLetter()"
+              style="
+                padding: 0.6rem 1.5rem;
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 600;
+                display: none;
+              "
+            >
+              ✓ Confirm & Send
+            </button>
+            <button
+              onclick="closeOfferLetterModal()"
+              style="
+                padding: 0.6rem 1.5rem;
+                background: #6c757d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 600;
+              "
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
   </body>
 </html>
