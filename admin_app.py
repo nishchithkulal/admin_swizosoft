@@ -2990,7 +2990,9 @@ def generate_certificate(candidate_id):
                 try:
                     print(f"[DEBUG] Attempting to send certificate to {candidate_email}")
                     print(f"[DEBUG] PDF bytes type: {type(pdf_bytes)}, size: {len(pdf_bytes) if pdf_bytes else 0}")
-                    result = send_certificate_email(candidate_email, candidate_name, pdf_bytes, certificate_id)
+                    # Call send_certificate_email with app context
+                    with app.app_context():
+                        result = send_certificate_email(candidate_email, candidate_name, pdf_bytes, certificate_id)
                     if result:
                         app.logger.info(f"✓ Certificate email sent to {candidate_email}")
                         print(f"✓ Certificate email sent to {candidate_email}")

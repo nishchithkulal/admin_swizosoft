@@ -1,7 +1,28 @@
 from flask_mail import Mail, Message
 from flask import current_app
+import time
 
 mail = Mail()
+
+# Rate limiting: Hostinger allows ~15 emails per minute
+# Set delay to 15 seconds between emails to stay WELL under the limit
+# This means max 4 emails per minute (15 limit / 4 = safe margin)
+HOSTINGER_MIN_EMAIL_DELAY = 15  # seconds
+last_email_time = 0
+
+
+def rate_limit_email():
+    """Apply rate limiting to prevent hitting Hostinger's email limit."""
+    global last_email_time
+    current_time = time.time()
+    time_since_last = current_time - last_email_time
+    
+    if time_since_last < HOSTINGER_MIN_EMAIL_DELAY:
+        sleep_time = HOSTINGER_MIN_EMAIL_DELAY - time_since_last
+        print(f"[RATE LIMIT] Sleeping for {sleep_time:.2f}s to comply with Hostinger limits")
+        time.sleep(sleep_time)
+    
+    last_email_time = time.time()
 
 
 def send_accept_email(recipient_email, recipient_name, details=None, interview_link=None, internship_type='free'):
@@ -16,6 +37,9 @@ def send_accept_email(recipient_email, recipient_name, details=None, interview_l
     `internship_type` can be 'free' or 'paid' to customize the email message.
     """
     try:
+        # Apply rate limiting
+        rate_limit_email()
+        
         sender = current_app.config.get('MAIL_DEFAULT_SENDER')
 
         if internship_type == 'paid':
@@ -313,13 +337,21 @@ def send_certificate_email(recipient_email, recipient_name, certificate_pdf_byte
         # Validate inputs
         if not recipient_email:
             print(f"[ERROR] No email provided for certificate")
+            current_app.logger.error(f"Certificate email - no email provided")
             return False
         
         if not certificate_pdf_bytes:
             print(f"[ERROR] No PDF data for certificate")
+            current_app.logger.error(f"Certificate email - no PDF data provided")
+            return False
+        
+        if not isinstance(certificate_pdf_bytes, bytes):
+            print(f"[ERROR] PDF data is not bytes type: {type(certificate_pdf_bytes)}")
+            current_app.logger.error(f"Certificate email - PDF data is not bytes: {type(certificate_pdf_bytes)}")
             return False
         
         sender = current_app.config.get('MAIL_DEFAULT_SENDER')
+        print(f"[DEBUG] Mail sender: {sender}, Mail server: {current_app.config.get('MAIL_SERVER')}")
         
         subject = "Swizosoft — Your Internship Completion Certificate"
         
@@ -352,19 +384,19 @@ Swizosoft Pvt. Ltd."""
 
 <p>Best regards,<br/><strong>Swizosoft Pvt. Ltd.</strong></p>"""
 
+        print(f"[DEBUG] Creating message for {recipient_email}")
         msg = Message(subject=subject, sender=sender, recipients=[recipient_email])
         msg.body = body
         msg.html = html
         
         # Attach the PDF
         filename = f"{certificate_id}.pdf"
-        if isinstance(certificate_pdf_bytes, bytes):
-            msg.attach(filename, "application/pdf", certificate_pdf_bytes)
-        else:
-            print(f"[ERROR] PDF data is not bytes type: {type(certificate_pdf_bytes)}")
-            return False
+        print(f"[DEBUG] Attaching PDF: {filename}, size: {len(certificate_pdf_bytes)} bytes")
+        msg.attach(filename, "application/pdf", certificate_pdf_bytes)
         
+        print(f"[DEBUG] Sending mail message...")
         mail.send(msg)
+        
         current_app.logger.info(f"✓ Certificate email sent to {recipient_email} with certificate ID {certificate_id}")
         print(f"✓ Certificate email sent successfully to {recipient_email}")
         return True

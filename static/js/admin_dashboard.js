@@ -90,6 +90,7 @@ function populateTable(type, data) {
             <th>View ID Proof</th>
             <th>View Resume</th>
             <th>View ${type === "free" ? "Project" : "Payment"}</th>
+            <th>View Profile</th>
             <th>Action</th>
         </tr>
     `;
@@ -107,6 +108,7 @@ function populateTable(type, data) {
       type === "free"
         ? `<button class="table-action-btn table-view-btn" onclick="viewFile(${row.id}, 'project', '${type}')">View Project</button>`
         : `<button class="table-action-btn table-view-btn" onclick="viewFile(${row.id}, 'payment', '${type}')">View Payment</button>`;
+    const profileBtn = `<button class="table-action-btn table-view-btn" onclick="viewProfile(${row.id}, '${type}')">View Profile</button>`;
 
     tr.innerHTML = `
             <td class="table-name">${row.name || "N/A"}</td>
@@ -123,6 +125,7 @@ function populateTable(type, data) {
             <td>${idProofBtn}</td>
             <td>${resumeBtn}</td>
             <td>${projectBtn}</td>
+            <td>${profileBtn}</td>
             <td>
                 <div class="table-actions">
                     <button class="table-action-btn table-edit-btn" onclick="openEditModal(${
@@ -212,31 +215,113 @@ function updateStatus(internshipId, status, internshipType) {
 }
 
 function viewFile(internshipId, fileType, internshipType) {
-  // Special handling for payment screenshots
-  if (fileType === "payment") {
-    fetch(
-      `/admin/api/get-payment-screenshots/${internshipId}?type=${internshipType}`
-    )
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.success) {
-          // Open viewer page
-          const viewUrl = `/admin/view-file/${internshipId}/${fileType}?type=${internshipType}`;
-          window.open(viewUrl, "_blank");
-        } else {
-          alert("Payment screenshot not found: " + (data.error || "unknown"));
-        }
-      })
-      .catch((error) => {
-        console.error("Error:", error);
-        alert("Error loading payment screenshot");
-      });
-    return;
+  // Build the file viewer URL
+  const fileViewUrl = `/admin/serve-file-inplace/${internshipId}/${fileType}?type=${internshipType}`;
+
+  // Map file types to display names
+  const fileTypeLabels = {
+    id_proof: "ID Proof",
+    resume: "Resume",
+    project: "Project",
+    payment: "Payment Screenshot",
+  };
+
+  const fileName = fileTypeLabels[fileType] || fileType;
+
+  // Display in modal using the existing displayFileUrlInModal function
+  displayFileUrlInModal(fileViewUrl, fileName, fileType);
+}
+
+function viewProfile(internshipId, internshipType) {
+  // Fetch profile data
+  fetch(`/admin/api/get-profile/${internshipId}?type=${internshipType}`)
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.success) {
+        showProfileModal(data.data);
+      } else {
+        alert("Error loading profile: " + (data.error || "Unknown"));
+      }
+    })
+    .catch((error) => {
+      console.error("Error:", error);
+      alert("Error loading profile");
+    });
+}
+
+function showProfileModal(profileData) {
+  // Create a read-only profile display modal
+  const profileContainer = document.createElement("div");
+  profileContainer.className = "modal";
+  profileContainer.id = "profileViewModal";
+  profileContainer.style.display = "block";
+
+  let profileHTML = '<div style="padding: 20px;"><h3>Candidate Profile</h3>';
+
+  // Exclude file-related and non-relevant columns
+  const excludeColumns = [
+    "id",
+    "id_proof",
+    "resume",
+    "project_document",
+    "payment_screenshot",
+    "id_proof_content",
+    "resume_content",
+    "project_document_content",
+    "paid_internship_content",
+    "free_internship_content",
+    "created_at",
+    "updated_at",
+    "reason",
+    "applicationid",
+    "application_id",
+    "status",
+  ];
+
+  profileHTML +=
+    '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">';
+
+  for (const [key, value] of Object.entries(profileData)) {
+    if (!excludeColumns.includes(key.toLowerCase())) {
+      const displayKey = key
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+      const displayValue = (value || "N/A").toString().trim();
+
+      profileHTML += `
+        <div style="padding: 12px; background: #f5f5f5; border-radius: 6px;">
+          <strong style="color: #333; font-size: 13px;">${displayKey}</strong>
+          <p style="margin: 8px 0 0 0; color: #666; font-size: 14px;">${displayValue}</p>
+        </div>
+      `;
+    }
   }
 
-  // Open viewer page for all file types
-  const viewUrl = `/admin/view-file/${internshipId}/${fileType}?type=${internshipType}`;
-  window.open(viewUrl, "_blank");
+  profileHTML += "</div>";
+  profileHTML +=
+    '<div style="margin-top: 20px;"><button onclick="closeProfileModal()" class="table-action-btn table-edit-btn" style="width: 100%;">Close</button></div>';
+  profileHTML += "</div>";
+
+  profileContainer.innerHTML = `
+    <div class="modal-content" style="width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h3>Candidate Profile</h3>
+        <button class="modal-close" onclick="closeProfileModal()">✕</button>
+      </div>
+      <div style="padding: 20px; overflow-y: auto;">
+        ${profileHTML}
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(profileContainer);
+}
+
+function closeProfileModal() {
+  const modal = document.getElementById("profileViewModal");
+  if (modal) {
+    modal.remove();
+  }
 }
 
 function displayFileInModal(fileName, fileType) {
@@ -286,66 +371,11 @@ function displayFileUrlInModal(fileUrl, fileName, fileType) {
     ? fileUrl + "&download=1"
     : fileUrl + "?download=1";
   downloadBtn.href = downloadUrl;
-  // ALWAYS hide initially - will show after content loads
-  downloadBtn.style.display = "none";
-
-  // Detect file type by extension
-  const lower = (fileName || fileUrl || "").toLowerCase();
-
-  // PDFs: embed in iframe
-  if (lower.endsWith(".pdf")) {
-    fileViewerContainer.innerHTML = `<iframe id="fileFrame" src="${fileUrl}" style="width:100%;height:100%;border:none;"></iframe>`;
-    fileModal.classList.add("show");
-    // Show download button after iframe fully loads
-    const frame = document.getElementById("fileFrame");
-    frame.onload = function () {
-      console.log("PDF loaded");
-      downloadBtn.style.display = "inline-flex";
-    };
-    frame.onerror = function () {
-      console.log("PDF load error");
-      downloadBtn.style.display = "inline-flex";
-    };
-    return;
-  }
-
-  // Images: embed with img tag
-  if (lower.match(/\.(jpg|jpeg|png|gif|bmp)$/)) {
-    fileViewerContainer.innerHTML = `<img id="fileImg" src="${fileUrl}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;" />`;
-    fileModal.classList.add("show");
-    // Show download button after image loads
-    const img = document.getElementById("fileImg");
-    img.onload = function () {
-      console.log("Image loaded");
-      downloadBtn.style.display = "inline-flex";
-    };
-    img.onerror = function () {
-      console.log("Image load error");
-      downloadBtn.style.display = "inline-flex";
-    };
-    return;
-  }
-
-  // DOCX/DOC files: display using Google Docs Viewer
-  if (lower.match(/\.(docx|doc|xlsx|xls|pptx|ppt)$/)) {
-    const encodedUrl = encodeURIComponent(fileUrl);
-    // Show loading message first
-    fileViewerContainer.innerHTML = `<div style="text-align:center;padding:40px;color:#999;"><p>⏳ Loading document...</p></div>`;
-    fileViewerContainer.innerHTML += `<iframe id="fileFrame" src="https://docs.google.com/gview?url=${encodedUrl}&embedded=true" style="width:100%;height:100%;border:none;"></iframe>`;
-    fileModal.classList.add("show");
-    // Show download button after delay (Google Docs Viewer takes time)
-    setTimeout(() => {
-      console.log("Document ready (timeout)");
-      downloadBtn.style.display = "inline-flex";
-    }, 3000);
-    return;
-  }
-
-  // For other types
-  fileViewerContainer.innerHTML = `<p>File type <strong>${fileName}</strong> cannot be previewed.</p><p>Click Download button to get this file.</p>`;
-  fileModal.classList.add("show");
-  // Show download button immediately
   downloadBtn.style.display = "inline-flex";
+
+  // Display PDF in iframe
+  fileViewerContainer.innerHTML = `<iframe id="fileFrame" src="${fileUrl}" style="width:100%;height:100%;border:none;"></iframe>`;
+  fileModal.classList.add("show");
 }
 
 function closeFileModal() {

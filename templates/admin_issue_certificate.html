@@ -456,8 +456,16 @@
               issueBtn.className = "action-btn issue-btn";
               issueBtn.onclick = () => {
                 // Pass a reliable numeric id: prefer user_id, then application_id, then candidate_id
-                const cid = candidate.user_id || candidate.application_id || candidate.candidate_id || candidate.id;
-                console.log('Issuing certificate for candidate', cid, candidate.name);
+                const cid =
+                  candidate.user_id ||
+                  candidate.application_id ||
+                  candidate.candidate_id ||
+                  candidate.id;
+                console.log(
+                  "Issuing certificate for candidate",
+                  cid,
+                  candidate.name
+                );
                 issueCertificate(
                   candidate.usn,
                   candidate.name,
@@ -574,10 +582,13 @@
           )}</strong>...<br/><small>Please wait</small></div>`;
           modal.classList.add("show");
 
-          const resp = await fetch(`/admin/api/generate-certificate/${candidateId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          });
+          const resp = await fetch(
+            `/admin/api/generate-certificate/${candidateId}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            }
+          );
 
           if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
@@ -591,7 +602,11 @@
 
           // Use existing PDF viewer to show the returned base64 PDF
           // viewProjectPDF expects (usn, projectContent(base64), projectTitle)
-          viewProjectPDF(usn, data.pdf_data, `Certificate - ${data.certificate_id}`);
+          viewProjectPDF(
+            usn,
+            data.pdf_data,
+            `Certificate - ${data.certificate_id}`
+          );
         } catch (e) {
           // Show error inside the modal
           const modal = document.getElementById("profileModal");
@@ -607,9 +622,12 @@
       let currentCertificateId = null;
 
       function downloadCertificateById(certificateId) {
-        if (!certificateId) return alert('No certificate available for download');
+        if (!certificateId)
+          return alert("No certificate available for download");
         // Trigger a navigation to the download endpoint which will prompt file download
-        const url = `/admin/api/download-certificate/${encodeURIComponent(certificateId)}`;
+        const url = `/admin/api/download-certificate/${encodeURIComponent(
+          certificateId
+        )}`;
         window.location.href = url;
       }
 
@@ -644,8 +662,10 @@
               ></iframe>
             `;
             // If title contains certificate id in format 'Certificate - <ID>' set currentCertificateId
-            if (projectTitle && projectTitle.startsWith('Certificate - ')) {
-              currentCertificateId = projectTitle.split('Certificate - ')[1].trim();
+            if (projectTitle && projectTitle.startsWith("Certificate - ")) {
+              currentCertificateId = projectTitle
+                .split("Certificate - ")[1]
+                .trim();
             }
           } else {
             pdfHtml += `<div style="text-align: center; color: #999;">No project document available</div>`;
@@ -660,13 +680,17 @@
           modal.classList.add("show");
 
           // Wire download button if present
-          const dlBtn = document.getElementById('downloadPdfBtn');
+          const dlBtn = document.getElementById("downloadPdfBtn");
           if (dlBtn) {
             dlBtn.onclick = () => {
               // Prefer explicit certificate id; if not available, try to parse from title
               let idToDownload = currentCertificateId;
-              if (!idToDownload && projectTitle && projectTitle.startsWith('Certificate - ')) {
-                idToDownload = projectTitle.split('Certificate - ')[1].trim();
+              if (
+                !idToDownload &&
+                projectTitle &&
+                projectTitle.startsWith("Certificate - ")
+              ) {
+                idToDownload = projectTitle.split("Certificate - ")[1].trim();
               }
               downloadCertificateById(idToDownload);
             };
@@ -674,9 +698,7 @@
         } catch (e) {
           alert(`Error: ${e.message}`);
         }
-      }
-
-      window.onclick = (e) => {
+      }      window.onclick = (e) => {
         if (e.target === document.getElementById("profileModal"))
           closeProfile();
       };
