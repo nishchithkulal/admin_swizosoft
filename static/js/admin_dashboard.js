@@ -251,6 +251,10 @@ async function initiatePaidInternshipAccept(applicationId) {
       email: applicantData.email || "",
       college: applicantData.college || "",
       domain: applicantData.domain || "",
+      mode_of_internship:
+        applicantData.mode_of_internship ||
+        applicantData.internship_mode ||
+        "online",
       year: applicantData.year || "",
       qualification: applicantData.qualification || "",
       branch: applicantData.branch || applicantData.department || "",
@@ -293,6 +297,17 @@ async function generateAndShowOfferLetterForPaid(applicantData, domain) {
       "<p>Generating offer letter...</p>";
     document.getElementById("confirmOfferBtn").style.display = "none";
 
+    // Map mode_of_internship to display format
+    const modeMapping = {
+      online: "remote-based opportunity",
+      offline: "on-site based opportunity",
+      hybrid: "hybrid-based opportunity",
+    };
+
+    // Get the actual mode from applicant data and map it
+    const rawMode = applicantData.mode_of_internship || "online";
+    const displayMode = modeMapping[rawMode.toLowerCase()] || rawMode;
+
     // Call the new generate offer letter endpoint
     const generateResponse = await fetch(
       "/admin/api/generate-offer-letter-preview",
@@ -307,7 +322,7 @@ async function generateAndShowOfferLetterForPaid(applicantData, domain) {
           college: applicantData.college,
           email: applicantData.email,
           domain: domain,
-          mode_of_internship: "paid",
+          mode_of_internship: displayMode,
           internship_type: "paid",
           duration: "3 months", // Default for paid internship
         }),
@@ -333,7 +348,7 @@ async function generateAndShowOfferLetterForPaid(applicantData, domain) {
       email: applicantData.email,
       college: applicantData.college,
       domain: domain,
-      mode_of_internship: "paid",
+      mode_of_internship: displayMode,
       internship_type: "paid",
       duration: 3, // 3 months for paid
       pdf_b64: generateData.pdf_data,

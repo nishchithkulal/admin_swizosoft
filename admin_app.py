@@ -163,6 +163,25 @@ def get_resolved_table(base_name):
     _TABLE_NAME_CACHE[base_name] = resolved
     return resolved
 
+def format_domain_as_role(domain):
+    """Convert domain name to role format (first word capitalized, rest lowercase).
+    
+    Examples:
+    - "FULL STACK DEVELOPER" -> "Full stack developer"
+    - "ARTIFICIAL INTELLIGENCE" -> "Artificial intelligence"
+    - "SQL DEVELOPER" -> "Sql developer"
+    """
+    if not domain:
+        return "Intern"
+    # Split into words, capitalize first, lowercase rest
+    words = domain.strip().split()
+    if words:
+        words[0] = words[0].capitalize()
+        for i in range(1, len(words)):
+            words[i] = words[i].lower()
+        return " ".join(words)
+    return "Intern"
+
 # Simple login-required decorator
 def login_required(f):
     @wraps(f)
@@ -1259,8 +1278,8 @@ def handle_approved_candidate_accept(approved_candidate, internship_type='free')
         domain_val = approved_candidate.domain or ''
         mode_of_interview_val = approved_candidate.mode_of_interview or 'online'
         
-        # Create role: "domain name Intern"
-        role_val = f"{domain_val} Intern" if domain_val else "Intern"
+        # Create role: "domain name Intern" (with proper case formatting)
+        role_val = f"{format_domain_as_role(domain_val)} Intern"
         
         # Determine duration based on internship type
         duration_months = 1
@@ -1718,8 +1737,8 @@ def admin_accept(user_id):
             
             # Insert into Selected table (with generated candidate_id, approved_date set to today, completion_date calculated)
             try:
-                # Create role: "domain name Intern"
-                role_val = f"{domain_val} Intern" if domain_val else "Intern"
+                # Create role: "domain name Intern" (with proper case formatting)
+                role_val = f"{format_domain_as_role(domain_val)} Intern"
                 
                 insert_sql = """INSERT INTO Selected 
                 (candidate_id, name, email, phone, usn, year, qualification, branch, college, domain, roles,
@@ -3683,7 +3702,7 @@ def generate_offer_letter_preview():
         
         # Generate offer letter PDF
         try:
-            pdf_output, ref_no = generate_offer_pdf(name, usn, college, email, role, duration, internship_type)
+            pdf_output, ref_no = generate_offer_pdf(name, usn, college, email, role, duration, mode_of_internship)
             
             if not pdf_output or not ref_no:
                 return jsonify({'success': False, 'error': 'Failed to generate offer letter PDF'}), 500
@@ -3812,7 +3831,7 @@ def confirm_offer_letter():
                 selected.branch = approved_candidate.branch or ''
                 selected.college = college
                 selected.domain = domain
-                selected.roles = f"{domain} Intern" if domain else "Intern"
+                selected.roles = f"{format_domain_as_role(domain)} Intern"
                 selected.mode_of_internship = mode_of_internship
                 selected.approved_date = datetime.utcnow().date()
                 selected.status = 'ongoing'
@@ -3896,7 +3915,7 @@ def confirm_offer_letter():
                         project_name,
                         project_title,
                         'ongoing', duration_months, 0,
-                        internship_type,  # mode_of_internship
+                        mode_of_internship,  # mode_of_internship (mapped value: remote-based, on-site, hybrid-based)
                         pdf_bytes,
                         reference_number
                     ))
