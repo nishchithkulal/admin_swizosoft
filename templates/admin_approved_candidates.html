@@ -1009,7 +1009,6 @@
 
       function closeOfferLetterModal() {
         document.getElementById("offerLetterModal").classList.remove("show");
-        currentOfferLetterData = null;
       }
 
       async function confirmOfferLetter() {
@@ -1056,8 +1055,11 @@
               " and candidate moved to Selected table."
           );
 
-          // Reload the table
+          // Reload the tables
           loadApprovedCandidates();
+          if (typeof loadSelectedCandidates === "function") {
+            loadSelectedCandidates();
+          }
 
           currentOfferLetterData = null;
         } catch (error) {
