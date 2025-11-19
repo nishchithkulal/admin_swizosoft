@@ -3232,7 +3232,7 @@ def generate_offer_pdf(name, usn, college, email, role, duration, intern_type):
         LEFT = 30
         RIGHT = 30
         LINE = 15
-        GAP = 12
+        GAP = 2
         TOP = 275
         F_SIZE = 12
         
@@ -3317,6 +3317,7 @@ def generate_offer_pdf(name, usn, college, email, role, duration, intern_type):
         bold_swizo = re.compile(re.escape("Swizosoft (OPC) Private Limited"), re.IGNORECASE)
         bold_team = re.compile(re.escape("Team Swizosoft (OPC) Private Limited"), re.IGNORECASE)
         bold_industry = re.compile(r"industry-ready\s+skills", re.IGNORECASE)
+        bold_remote = re.compile(re.escape("remote-based opportunity"), re.IGNORECASE)
         bold_role = re.compile(re.escape(role), re.IGNORECASE)
         bold_intern_type = re.compile(re.escape(intern_type), re.IGNORECASE)
         bold_trial = re.compile(r"gain\s+hands-on\s+project", re.IGNORECASE)
@@ -3325,6 +3326,7 @@ def generate_offer_pdf(name, usn, college, email, role, duration, intern_type):
             bold_duration_trial,
             bold_hands_on,
             bold_industry,
+            bold_remote,
             bold_team,
             bold_swizo,
             bold_intern_type,
@@ -3457,7 +3459,7 @@ def generate_offer_pdf(name, usn, college, email, role, duration, intern_type):
         )
         
         paragraph(
-            f"This internship is a {intern_type} designed to help students gain hands-on project\n"
+            f"This internship is a remote-based opportunity designed to help students gain hands-on project\n"
             " experience and develop industry-ready skills in their respective domains. You will be assigned "
             "project-based tasks to work on from your own location, under the guidance of our mentors and "
             "coordinators."
@@ -3472,12 +3474,16 @@ def generate_offer_pdf(name, usn, college, email, role, duration, intern_type):
             "We are excited to have you join Team Swizosoft (OPC) Private Limited, and we look forward to your "
             "active contribution, learning, and growth throughout this journey."
         )
+
+    
+
+  
         
         # ============ SIGNATURE ============
-        y -= 10
+        y -= 35
         can.setFont(BOLD, F_SIZE)
         can.drawString(LEFT, y, "Mr. Aditya Madhukar Bhat")
-        y -= 18
+        y -= 30
         can.drawString(LEFT, y, "Director, Swizosoft (OPC) Private Limited")
         
         # ============ MERGE PDF ============

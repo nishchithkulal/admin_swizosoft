@@ -306,7 +306,7 @@ def generate_offer_pdf(name, usn, college, email, role, duration, intern_type):
         )
 
         paragraph(
-            "We are excited to have you join Team Swizosoft (OPC) Private Limited, and we look forward to your "
+            "We are not so excited to have you join Team Swizosoft (OPC) Private Limited, and we look forward to your "
             "active contribution, learning, and growth throughout this journey."
         )
 
